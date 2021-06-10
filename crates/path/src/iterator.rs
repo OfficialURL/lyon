@@ -91,6 +91,8 @@
 //! }
 //! ```
 
+use lyon_geom::Scalar;
+
 use crate::geom::traits::Transformation;
 use crate::geom::{
     cubic_bezier, quadratic_bezier, BezierSegment, CubicBezierSegment, LineSegment,
@@ -100,14 +102,14 @@ use crate::math::*;
 use crate::PathEvent;
 
 /// An extension trait for `PathEvent` iterators.
-pub trait PathIterator: Iterator<Item = PathEvent> + Sized {
+pub trait PathIterator<T: Scalar>: Iterator<Item = PathEvent<T>> + Sized {
     /// Returns an iterator that turns curves into line segments.
-    fn flattened(self, tolerance: f32) -> Flattened<Self> {
+    fn flattened(self, tolerance: T) -> Flattened<T, Self> {
         Flattened::new(tolerance, self)
     }
 
     /// Returns an iterator applying a 2D transform to all of its events.
-    fn transformed<'l, T: Transformation<f32>>(self, mat: &'l T) -> Transformed<'l, Self, T> {
+    fn transformed<'l, U: Transformation<T>>(self, mat: &'l U) -> Transformed<'l, Self, U> {
         Transformed::new(mat, self)
     }
 
@@ -117,40 +119,40 @@ pub trait PathIterator: Iterator<Item = PathEvent> + Sized {
     }
 }
 
-impl<Iter> PathIterator for Iter where Iter: Iterator<Item = PathEvent> {}
+impl<T: Scalar, Iter> PathIterator<T> for Iter where Iter: Iterator<Item = PathEvent<T>> {}
 
 /// An iterator that consumes `Event` iterator and yields flattend path events (with no curves).
-pub struct Flattened<Iter> {
+pub struct Flattened<T: Scalar, Iter> {
     it: Iter,
-    current_position: Point,
-    current_curve: TmpFlatteningIter,
-    tolerance: f32,
+    current_position: Point<T>,
+    current_curve: TmpFlatteningIter<T>,
+    tolerance: T,
 }
 
-enum TmpFlatteningIter {
-    Quadratic(quadratic_bezier::Flattened<f32>),
-    Cubic(cubic_bezier::Flattened<f32>),
+enum TmpFlatteningIter<T: Scalar> {
+    Quadratic(quadratic_bezier::Flattened<T>),
+    Cubic(cubic_bezier::Flattened<T>),
     None,
 }
 
-impl<Iter: Iterator<Item = PathEvent>> Flattened<Iter> {
+impl<T: Scalar, Iter: Iterator<Item = PathEvent<T>>> Flattened<T, Iter> {
     /// Create the iterator.
-    pub fn new(tolerance: f32, it: Iter) -> Self {
+    pub fn new(tolerance: T, it: Iter) -> Self {
         Flattened {
             it,
-            current_position: point(0.0, 0.0),
+            current_position: point(T::ZERO, T::ZERO),
             current_curve: TmpFlatteningIter::None,
             tolerance,
         }
     }
 }
 
-impl<Iter> Iterator for Flattened<Iter>
+impl<T: Scalar, Iter> Iterator for Flattened<T, Iter>
 where
-    Iter: Iterator<Item = PathEvent>,
+    Iter: Iterator<Item = PathEvent<T>>,
 {
-    type Item = PathEvent;
-    fn next(&mut self) -> Option<PathEvent> {
+    type Item = PathEvent<T>;
+    fn next(&mut self) -> Option<PathEvent<T>> {
         match self.current_curve {
             TmpFlatteningIter::Quadratic(ref mut it) => {
                 if let Some(to) = it.next() {
@@ -211,24 +213,24 @@ pub struct Transformed<'l, I, T> {
     transform: &'l T,
 }
 
-impl<'l, I, T: Transformation<f32>> Transformed<'l, I, T>
+impl<'l, I, T: Scalar, U: Transformation<T>> Transformed<'l, I, U>
 where
-    I: Iterator<Item = PathEvent>,
+    I: Iterator<Item = PathEvent<T>>,
 {
     /// Creates a new transformed path iterator from a path iterator.
     #[inline]
-    pub fn new(transform: &'l T, it: I) -> Transformed<'l, I, T> {
+    pub fn new(transform: &'l U, it: I) -> Transformed<'l, I, U> {
         Transformed { it, transform }
     }
 }
 
-impl<'l, I, T> Iterator for Transformed<'l, I, T>
+impl<'l, I, T: Scalar, U> Iterator for Transformed<'l, I, U>
 where
-    I: Iterator<Item = PathEvent>,
-    T: Transformation<f32>,
+    I: Iterator<Item = PathEvent<T>>,
+    U: Transformation<T>,
 {
-    type Item = PathEvent;
-    fn next(&mut self) -> Option<PathEvent> {
+    type Item = PathEvent<T>;
+    fn next(&mut self) -> Option<PathEvent<T>> {
         match self.it.next() {
             None => None,
             Some(ref evt) => Some(evt.transformed(self.transform)),
@@ -253,21 +255,21 @@ where
 /// let iter = FromPolyline::closed(points.iter().cloned());
 /// # }
 /// ```
-pub struct FromPolyline<Iter> {
+pub struct FromPolyline<T: Scalar, Iter> {
     iter: Iter,
-    current: Point,
-    first: Point,
+    current: Point<T>,
+    first: Point<T>,
     is_first: bool,
     done: bool,
     close: bool,
 }
 
-impl<Iter: Iterator<Item = Point>> FromPolyline<Iter> {
+impl<T: Scalar, Iter: Iterator<Item = Point<T>>> FromPolyline<T, Iter> {
     pub fn new(close: bool, iter: Iter) -> Self {
         FromPolyline {
             iter,
-            current: point(0.0, 0.0),
-            first: point(0.0, 0.0),
+            current: point(T::ZERO, T::ZERO),
+            first: point(T::ZERO, T::ZERO),
             is_first: true,
             done: false,
             close,
@@ -283,13 +285,13 @@ impl<Iter: Iterator<Item = Point>> FromPolyline<Iter> {
     }
 }
 
-impl<Iter> Iterator for FromPolyline<Iter>
+impl<T: Scalar, Iter> Iterator for FromPolyline<T, Iter>
 where
-    Iter: Iterator<Item = Point>,
+    Iter: Iterator<Item = Point<T>>,
 {
-    type Item = PathEvent;
+    type Item = PathEvent<T>;
 
-    fn next(&mut self) -> Option<PathEvent> {
+    fn next(&mut self) -> Option<PathEvent<T>> {
         if self.done {
             return None;
         }
@@ -323,12 +325,12 @@ pub struct BezierSegments<Iter> {
     iter: Iter,
 }
 
-impl<Iter> Iterator for BezierSegments<Iter>
+impl<T: Scalar, Iter> Iterator for BezierSegments<Iter>
 where
-    Iter: Iterator<Item = PathEvent>,
+    Iter: Iterator<Item = PathEvent<T>>,
 {
-    type Item = BezierSegment<f32>;
-    fn next(&mut self) -> Option<BezierSegment<f32>> {
+    type Item = BezierSegment<T>;
+    fn next(&mut self) -> Option<BezierSegment<T>> {
         match self.iter.next() {
             Some(PathEvent::Line { from, to }) => {
                 Some(BezierSegment::Linear(LineSegment { from, to }))

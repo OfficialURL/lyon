@@ -1,3 +1,5 @@
+use lyon_geom::Scalar;
+
 use crate::geom::traits::Transformation;
 use crate::math::Point;
 use crate::{ControlPointId, EndpointId, Position};
@@ -32,7 +34,7 @@ pub enum Event<Endpoint, ControlPoint> {
 }
 
 /// A path event representing endpoints and control points as positions.
-pub type PathEvent = Event<Point, Point>;
+pub type PathEvent<T> = Event<Point<T>, Point<T>>;
 
 /// A path event representing endpoints and control points as IDs.
 pub type IdEvent = Event<EndpointId, ControlPointId>;
@@ -74,10 +76,10 @@ impl<Ep, Cp> Event<Ep, Cp> {
         }
     }
 
-    pub fn with_points(&self) -> PathEvent
+    pub fn with_points<T: Scalar>(&self) -> PathEvent<T>
     where
-        Ep: Position,
-        Cp: Position,
+        Ep: Position<T>,
+        Cp: Position<T>,
     {
         match self {
             Event::Line { from, to } => Event::Line {
@@ -110,8 +112,8 @@ impl<Ep, Cp> Event<Ep, Cp> {
     }
 }
 
-impl PathEvent {
-    pub fn transformed<T: Transformation<f32>>(&self, mat: &T) -> Self {
+impl<T: Scalar> PathEvent<T> {
+    pub fn transformed<U: Transformation<T>>(&self, mat: &U) -> Self {
         match self {
             Event::Line { from, to } => Event::Line {
                 from: mat.transform_point(*from),

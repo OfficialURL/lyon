@@ -1,7 +1,7 @@
 use path::builder::SvgPathBuilder;
 use path::math::{point, vector};
 
-pub fn build_logo_path<Builder: SvgPathBuilder>(path: &mut Builder) {
+pub fn build_logo_path<Builder: SvgPathBuilder<f32>>(path: &mut Builder) {
     path.move_to(point(122.631, 69.716));
     path.relative_line_to(vector(-4.394, -2.72));
     path.relative_cubic_bezier_to(

@@ -1,5 +1,8 @@
 //! Specific path types for polygons.
 
+
+use lyon_geom::Scalar;
+
 use crate::math::Point;
 use crate::{
     ControlPointId, EndpointId, Event, EventId, IdEvent, PathEvent, Position, PositionStore,
@@ -26,14 +29,14 @@ use crate::{
 ///     // same as iterating a regular `Path` object.
 /// }
 /// ```
-pub struct Polygon<'l, T> {
-    pub points: &'l [T],
+pub struct Polygon<'l, U> {
+    pub points: &'l [U],
     pub closed: bool,
 }
 
-impl<'l, T> Polygon<'l, T> {
+impl<'l, U> Polygon<'l, U> {
     /// Returns an iterator of `Event<&T>`.
-    pub fn iter(&self) -> PolygonIter<'l, T> {
+    pub fn iter(&self) -> PolygonIter<'l, U> {
         PolygonIter {
             points: self.points.iter(),
             prev: None,
@@ -48,9 +51,9 @@ impl<'l, T> Polygon<'l, T> {
     }
 
     /// Returns an iterator of `PathEvent`.
-    pub fn path_events(&self) -> PathEvents<T>
+    pub fn path_events<T: Scalar>(&self) -> PathEvents<T, U>
     where
-        T: Position,
+        U: Position<T>,
     {
         PathEvents {
             points: self.points.iter(),
@@ -61,7 +64,7 @@ impl<'l, T> Polygon<'l, T> {
     }
 
     /// Returns the event for a given event ID.
-    pub fn event(&self, id: EventId) -> Event<&T, ()> {
+    pub fn event(&self, id: EventId) -> Event<&U, ()> {
         let idx = id.0 as usize;
         if idx == 0 {
             Event::Begin {
@@ -199,16 +202,16 @@ impl<'l, T> Iterator for PolygonIter<'l, T> {
 }
 
 /// An iterator of `PathEvent`.
-pub struct PathEvents<'l, T> {
-    points: std::slice::Iter<'l, T>,
-    prev: Option<Point>,
-    first: Option<Point>,
+pub struct PathEvents<'l, T: Scalar, U> {
+    points: std::slice::Iter<'l, U>,
+    prev: Option<Point<T>>,
+    first: Option<Point<T>>,
     closed: bool,
 }
 
-impl<'l, T: Position> Iterator for PathEvents<'l, T> {
-    type Item = PathEvent;
-    fn next(&mut self) -> Option<PathEvent> {
+impl<'l, T: Scalar, U: Position<T>> Iterator for PathEvents<'l, T, U> {
+    type Item = PathEvent<T>;
+    fn next(&mut self) -> Option<PathEvent<T>> {
         match (self.prev, self.points.next()) {
             (Some(from), Some(to)) => {
                 let to = to.position();
@@ -282,15 +285,15 @@ impl Iterator for PolygonIdIter {
     }
 }
 
-impl<'l, Endpoint> PositionStore for Polygon<'l, Endpoint>
+impl<'l, Endpoint, T: Scalar> PositionStore<T> for Polygon<'l, Endpoint>
 where
-    Endpoint: Position,
+    Endpoint: Position<T>,
 {
-    fn get_endpoint(&self, id: EndpointId) -> Point {
+    fn get_endpoint(&self, id: EndpointId) -> Point<T> {
         self.points[id.to_usize()].position()
     }
 
-    fn get_control_point(&self, _: ControlPointId) -> Point {
+    fn get_control_point(&self, _: ControlPointId) -> Point <T>{
         panic!("Polygons do not have control points.");
     }
 }

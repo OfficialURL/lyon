@@ -1,3 +1,5 @@
+use lyon_path::geom::Scalar;
+
 use crate::extra::rust_logo::build_logo_path;
 use crate::geometry_builder::*;
 use crate::math::*;
@@ -7,15 +9,20 @@ use crate::{FillOptions, FillRule, FillTessellator, FillVertex, TessellationErro
 
 use std::env;
 
-fn tessellate(path: PathSlice, fill_rule: FillRule, log: bool) -> Result<usize, TessellationError> {
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+fn tessellate<T: Scalar>(
+    path: PathSlice<T>,
+    fill_rule: FillRule,
+    log: bool,
+) -> Result<usize, TessellationError> {
+    let mut buffers: VertexBuffers<Point<T>, u16> = VertexBuffers::new();
     {
-        let options = FillOptions::tolerance(0.05).with_fill_rule(fill_rule);
+        let tol = T::value(0.05);
+        let options = FillOptions::tolerance(tol).with_fill_rule(fill_rule);
 
         use crate::path::iterator::*;
 
         let mut builder = Path::builder();
-        for e in path.iter().flattened(0.05) {
+        for e in path.iter().flattened(tol) {
             builder.path_event(e);
         }
 
@@ -47,8 +54,8 @@ fn test_too_many_vertices() {
         fn abort_geometry(&mut self) {}
     }
 
-    impl FillGeometryBuilder for Builder {
-        fn add_fill_vertex(&mut self, _: FillVertex) -> Result<VertexId, GeometryBuilderError> {
+    impl<T: Scalar> FillGeometryBuilder<T> for Builder {
+        fn add_fill_vertex(&mut self, _: FillVertex<T>) -> Result<VertexId, GeometryBuilderError> {
             if self.max_vertices == 0 {
                 return Err(GeometryBuilderError::TooManyVertices);
             }
@@ -79,18 +86,18 @@ fn test_too_many_vertices() {
     );
 }
 
-fn test_path(path: PathSlice) {
+fn test_path<T: Scalar>(path: PathSlice<T>) {
     test_path_internal(path, FillRule::EvenOdd, None);
     test_path_internal(path, FillRule::NonZero, None);
 }
 
-fn test_path_and_count_triangles(path: PathSlice, expected_triangle_count: usize) {
+fn test_path_and_count_triangles<T: Scalar>(path: PathSlice<T>, expected_triangle_count: usize) {
     test_path_internal(path, FillRule::EvenOdd, Some(expected_triangle_count));
     test_path_internal(path, FillRule::NonZero, None);
 }
 
-fn test_path_internal(
-    path: PathSlice,
+fn test_path_internal<T: Scalar>(
+    path: PathSlice<T>,
     fill_rule: FillRule,
     expected_triangle_count: Option<usize>,
 ) {
@@ -117,7 +124,7 @@ fn test_path_internal(
     }
 
     if find_test_case {
-        crate::extra::debugging::find_reduced_test_case(path, &|path: Path| {
+        crate::extra::debugging::find_reduced_test_case(path, &|path: Path<T>| {
             return tessellate(path.as_slice(), fill_rule, false).is_err();
         });
     }
@@ -129,11 +136,13 @@ fn test_path_internal(
     panic!("Test failed with fill rule {:?}.", fill_rule);
 }
 
-fn test_path_with_rotations(path: Path, step: f32, expected_triangle_count: Option<usize>) {
-    use std::f32::consts::PI;
-
-    let mut angle = Angle::radians(0.0);
-    while angle.radians < PI * 2.0 {
+fn test_path_with_rotations<T: Scalar>(
+    path: Path<T>,
+    step: T,
+    expected_triangle_count: Option<usize>,
+) {
+    let mut angle = Angle::radians(T::ZERO);
+    while angle.radians < T::TAU() {
         //println!("\n\n ==================== angle = {:?}", angle);
 
         let tranformed_path = path.clone().transformed(&Rotation::new(angle));
@@ -426,7 +435,7 @@ fn test_rust_logo_with_intersection() {
 }
 
 #[cfg(test)]
-fn scale_path(path: &mut Path, scale: f32) {
+fn scale_path<T: Scalar>(path: &mut Path<T>, scale: T) {
     *path = path.clone().transformed(&Scale::new(scale))
 }
 
@@ -1147,7 +1156,12 @@ fn test_no_close() {
 
 #[test]
 fn test_empty_path() {
-    test_path_and_count_triangles(Path::new().as_slice(), 0);
+    fn test_empty_path<T: Scalar>() {
+        test_path_and_count_triangles::<T>(Path::new().as_slice(), 0);
+    }
+
+    test_empty_path::<f32>();
+    test_empty_path::<f64>();
 }
 
 #[test]
@@ -1332,7 +1346,7 @@ fn triangle() {
     let mut tess = FillTessellator::new();
     tess.set_logging(true);
 
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut buffers: VertexBuffers<Point<f32>, u16> = VertexBuffers::new();
 
     tess.tessellate(
         &path,
@@ -1360,7 +1374,7 @@ fn new_tess_1() {
 
     let mut tess = FillTessellator::new();
 
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut buffers: VertexBuffers<Point<f32>, u16> = VertexBuffers::new();
 
     tess.tessellate(
         &path,
@@ -1392,7 +1406,7 @@ fn new_tess_2() {
 
     let mut tess = FillTessellator::new();
 
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut buffers: VertexBuffers<Point<f32>, u16> = VertexBuffers::new();
 
     tess.tessellate(
         &path,
@@ -1418,7 +1432,7 @@ fn new_tess_merge() {
 
     let mut tess = FillTessellator::new();
 
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut buffers: VertexBuffers<Point<f32>, u16> = VertexBuffers::new();
 
     tess.tessellate(
         &path,
@@ -1448,7 +1462,7 @@ fn test_intersection_1() {
 
     let mut tess = FillTessellator::new();
 
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut buffers: VertexBuffers<Point<f32>, u16> = VertexBuffers::new();
 
     tess.tessellate(
         &path,
@@ -1474,7 +1488,7 @@ fn new_tess_points_too_close() {
     builder.end(true);
 
     let mut tess = FillTessellator::new();
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut buffers: VertexBuffers<Point<f32>, u16> = VertexBuffers::new();
 
     tess.tessellate(
         &builder.build(),
@@ -1501,7 +1515,7 @@ fn new_tess_coincident_simple() {
 
     let mut tess = FillTessellator::new();
 
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut buffers: VertexBuffers<Point<f32>, u16> = VertexBuffers::new();
 
     tess.tessellate(
         &builder.build(),
@@ -1523,7 +1537,7 @@ fn new_tess_overlapping_1() {
 
     let mut tess = FillTessellator::new();
 
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut buffers: VertexBuffers<Point<f32>, u16> = VertexBuffers::new();
 
     tess.tessellate(
         &builder.build(),
@@ -1550,7 +1564,7 @@ fn reduced_test_case_01() {
 
     let mut tess = FillTessellator::new();
 
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut buffers: VertexBuffers<Point<f32>, u16> = VertexBuffers::new();
 
     tess.tessellate(
         &builder.build(),
@@ -1598,7 +1612,7 @@ fn reduced_test_case_02() {
 
     let mut tess = FillTessellator::new();
 
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut buffers: VertexBuffers<Point<f32>, u16> = VertexBuffers::new();
 
     tess.tessellate(
         &builder.build(),
@@ -1657,7 +1671,7 @@ fn reduced_test_case_03() {
 
     let mut tess = FillTessellator::new();
 
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut buffers: VertexBuffers<Point<f32>, u16> = VertexBuffers::new();
 
     tess.tessellate(
         &builder.build(),
@@ -1702,7 +1716,7 @@ fn reduced_test_case_04() {
 
     let mut tess = FillTessellator::new();
 
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut buffers: VertexBuffers<Point<f32>, u16> = VertexBuffers::new();
 
     tess.tessellate(
         &builder.build(),
@@ -1752,7 +1766,7 @@ fn reduced_test_case_05() {
 
     let mut tess = FillTessellator::new();
 
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut buffers: VertexBuffers<Point<f32>, u16> = VertexBuffers::new();
 
     tess.tessellate(
         &builder.build(),
@@ -1784,7 +1798,7 @@ fn reduced_test_case_06() {
 
     let mut tess = FillTessellator::new();
 
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut buffers: VertexBuffers<Point<f32>, u16> = VertexBuffers::new();
 
     tess.tessellate(
         &builder.build(),
@@ -1819,7 +1833,7 @@ fn reduced_test_case_07() {
 
     let mut tess = FillTessellator::new();
 
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut buffers: VertexBuffers<Point<f32>, u16> = VertexBuffers::new();
 
     tess.tessellate(
         &builder.build(),
@@ -1849,7 +1863,7 @@ fn reduced_test_case_08() {
 
     let mut tess = FillTessellator::new();
 
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut buffers: VertexBuffers<Point<f32>, u16> = VertexBuffers::new();
 
     tess.tessellate(
         &builder.build(),
@@ -1878,7 +1892,7 @@ fn reduced_test_case_09() {
 
     let mut tess = FillTessellator::new();
 
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut buffers: VertexBuffers<Point<f32>, u16> = VertexBuffers::new();
 
     tess.tessellate(
         &builder.build(),
@@ -1911,7 +1925,7 @@ fn reduced_test_case_10() {
 
     let mut tess = FillTessellator::new();
 
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut buffers: VertexBuffers<Point<f32>, u16> = VertexBuffers::new();
 
     tess.tessellate(
         &builder.build(),
@@ -1940,7 +1954,7 @@ fn reduced_test_case_11() {
 
     let mut tess = FillTessellator::new();
 
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut buffers: VertexBuffers<Point<f32>, u16> = VertexBuffers::new();
 
     tess.tessellate(
         &builder.build(),
@@ -1969,7 +1983,7 @@ fn reduced_test_case_12() {
 
     let mut tess = FillTessellator::new();
 
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut buffers: VertexBuffers<Point<f32>, u16> = VertexBuffers::new();
 
     tess.tessellate(
         &builder.build(),
@@ -2007,7 +2021,7 @@ fn reduced_test_case_13() {
 
     let mut tess = FillTessellator::new();
 
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut buffers: VertexBuffers<Point<f32>, u16> = VertexBuffers::new();
 
     tess.tessellate(
         &builder.build(),
@@ -2040,7 +2054,7 @@ fn reduced_test_case_14() {
 
     let mut tess = FillTessellator::new();
 
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut buffers: VertexBuffers<Point<f32>, u16> = VertexBuffers::new();
 
     tess.tessellate(
         &builder.build(),
@@ -2076,7 +2090,7 @@ fn issue_500() {
 
     let mut tess = FillTessellator::new();
 
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut buffers: VertexBuffers<Point<f32>, u16> = VertexBuffers::new();
 
     tess.tessellate(
         &builder.build(),
@@ -2102,7 +2116,7 @@ fn issue_518_1() {
 
     let mut tess = FillTessellator::new();
 
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut buffers: VertexBuffers<Point<f32>, u16> = VertexBuffers::new();
 
     tess.tessellate(
         &builder.build(),
@@ -2126,7 +2140,7 @@ fn issue_518_2() {
 
     let mut tess = FillTessellator::new();
 
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut buffers: VertexBuffers<Point<f32>, u16> = VertexBuffers::new();
 
     tess.tessellate(
         &builder.build(),
@@ -2399,7 +2413,7 @@ fn low_tolerance_01() {
 
     let path = builder.build();
 
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+    let mut buffers: VertexBuffers<Point<f32>, u16> = VertexBuffers::new();
 
     let mut tess = FillTessellator::new();
     tess.tessellate(

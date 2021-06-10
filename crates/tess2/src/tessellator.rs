@@ -34,11 +34,11 @@ impl FillTessellator {
     pub fn tessellate<Iter>(
         &mut self,
         it: Iter,
-        options: &FillOptions,
-        output: &mut dyn GeometryReceiver,
+        options: &FillOptions<T>,
+        output: &mut dyn GeometryReceiver<T>,
     ) -> Result<Count, ()>
     where
-        Iter: IntoIterator<Item = PathEvent>,
+        Iter: IntoIterator<Item = PathEvent<T>>,
     {
         let mut builder = FlattenedPath::builder(options.tolerance);
 

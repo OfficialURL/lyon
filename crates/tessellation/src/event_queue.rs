@@ -1,3 +1,5 @@
+use lyon_path::geom::Scalar;
+
 use crate::fill::{compare_positions, is_after};
 use crate::geom::{CubicBezierSegment, QuadraticBezierSegment};
 use crate::math::{point, Point};
@@ -8,10 +10,10 @@ use crate::Orientation;
 use std::cmp::Ordering;
 use std::mem::swap;
 use std::ops::Range;
-use std::{f32, u32, usize};
+use std::{u32, usize};
 
 #[inline]
-fn reorient(p: Point) -> Point {
+fn reorient<T: Scalar>(p: Point<T>) -> Point<T> {
     point(-p.y, p.x)
 }
 
@@ -19,16 +21,16 @@ pub(crate) type TessEventId = u32;
 
 pub(crate) const INVALID_EVENT_ID: TessEventId = u32::MAX;
 
-pub(crate) struct Event {
+pub(crate) struct Event<T: Scalar> {
     pub next_sibling: TessEventId,
     pub next_event: TessEventId,
-    pub position: Point,
+    pub position: Point<T>,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct EdgeData {
-    pub to: Point,
-    pub range: std::ops::Range<f32>,
+pub(crate) struct EdgeData<T: Scalar> {
+    pub to: Point<T>,
+    pub range: std::ops::Range<T>,
     pub winding: i16,
     pub is_edge: bool,
     pub from_id: EndpointId,
@@ -37,14 +39,14 @@ pub(crate) struct EdgeData {
 
 #[doc(hidden)]
 /// A queue of sorted events for the fill tessellator's sweep-line algorithm.
-pub struct EventQueue {
-    pub(crate) events: Vec<Event>,
-    pub(crate) edge_data: Vec<EdgeData>,
+pub struct EventQueue<T: Scalar> {
+    pub(crate) events: Vec<Event<T>>,
+    pub(crate) edge_data: Vec<EdgeData<T>>,
     first: TessEventId,
     sorted: bool,
 }
 
-impl EventQueue {
+impl<T: Scalar> EventQueue<T> {
     pub fn new() -> Self {
         EventQueue {
             events: Vec::new(),
@@ -75,7 +77,7 @@ impl EventQueue {
     /// The tolerance threshold is used for curve flattening approximation. See the
     /// [Flattening and tolerance](index.html#flattening-and-tolerance) section of the
     /// crate documentation.
-    pub fn from_path(tolerance: f32, path: impl Iterator<Item = PathEvent>) -> Self {
+    pub fn from_path(tolerance: T, path: impl Iterator<Item = PathEvent<T>>) -> Self {
         let (min, max) = path.size_hint();
         let capacity = max.unwrap_or(min);
         let mut builder = EventQueueBuilder::with_capacity(capacity);
@@ -92,10 +94,10 @@ impl EventQueue {
     /// [Flattening and tolerance](index.html#flattening-and-tolerance) section of the
     /// crate documentation.
     pub fn from_path_with_ids(
-        tolerance: f32,
+        tolerance: T,
         sweep_orientation: Orientation,
         path: impl Iterator<Item = IdEvent>,
-        positions: &impl PositionStore,
+        positions: &impl PositionStore<T>,
     ) -> Self {
         let (min, max) = path.size_hint();
         let capacity = max.unwrap_or(min);
@@ -106,15 +108,15 @@ impl EventQueue {
     }
 
     // TODO: this should take the tolerance as parameter.
-    pub fn into_builder(mut self) -> EventQueueBuilder {
+    pub fn into_builder(mut self) -> EventQueueBuilder<T> {
         self.reset();
         EventQueueBuilder {
             queue: self,
-            current: point(f32::NAN, f32::NAN),
-            prev: point(f32::NAN, f32::NAN),
-            second: point(f32::NAN, f32::NAN),
+            current: point(T::nan(), T::nan()),
+            prev: point(T::nan(), T::nan()),
+            second: point(T::nan(), T::nan()),
             nth: 0,
-            tolerance: 0.1,
+            tolerance: T::ONE_TENTH,
             prev_endpoint_id: EndpointId(std::u32::MAX),
             validator: DebugValidator::new(),
         }
@@ -124,7 +126,7 @@ impl EventQueue {
         self.events.reserve(n);
     }
 
-    fn push_unsorted(&mut self, position: Point) {
+    fn push_unsorted(&mut self, position: Point<T>) {
         self.events.push(Event {
             position,
             next_sibling: INVALID_EVENT_ID,
@@ -132,7 +134,7 @@ impl EventQueue {
         });
     }
 
-    fn push_sorted(&mut self, position: Point) {
+    fn push_sorted(&mut self, position: Point<T>) {
         self.events.push(Event {
             position,
             next_sibling: u32::MAX,
@@ -180,8 +182,8 @@ impl EventQueue {
 
     pub(crate) fn insert_sorted(
         &mut self,
-        position: Point,
-        data: EdgeData,
+        position: Point<T>,
+        data: EdgeData<T>,
         after: TessEventId,
     ) -> TessEventId {
         debug_assert!(self.sorted);
@@ -205,7 +207,12 @@ impl EventQueue {
         idx
     }
 
-    pub(crate) fn insert_sibling(&mut self, sibling: TessEventId, position: Point, data: EdgeData) {
+    pub(crate) fn insert_sibling(
+        &mut self,
+        sibling: TessEventId,
+        position: Point<T>,
+        data: EdgeData<T>,
+    ) {
         debug_assert!(is_after(data.to, position));
         let idx = self.events.len() as TessEventId;
         let next_sibling = self.events[sibling as usize].next_sibling;
@@ -223,7 +230,7 @@ impl EventQueue {
 
     pub(crate) fn vertex_event_sorted(
         &mut self,
-        position: Point,
+        position: Point<T>,
         endpoint_id: EndpointId,
         after: TessEventId,
     ) {
@@ -231,8 +238,8 @@ impl EventQueue {
 
         self.push_unsorted(position);
         self.edge_data.push(EdgeData {
-            to: point(f32::NAN, f32::NAN),
-            range: 0.0..0.0,
+            to: point(T::nan(), T::nan()),
+            range: T::ZERO..T::ZERO,
             winding: 0,
             is_edge: false,
             from_id: endpoint_id,
@@ -242,7 +249,12 @@ impl EventQueue {
         self.insert_into_sorted_list(idx, position, after);
     }
 
-    fn insert_into_sorted_list(&mut self, idx: TessEventId, position: Point, after: TessEventId) {
+    fn insert_into_sorted_list(
+        &mut self,
+        idx: TessEventId,
+        position: Point<T>,
+        after: TessEventId,
+    ) {
         let mut prev = after;
         let mut current = after;
         while self.valid_id(current) {
@@ -293,7 +305,7 @@ impl EventQueue {
     }
 
     /// Returns the position of a given event in the queue.
-    pub(crate) fn position(&self, id: TessEventId) -> Point {
+    pub(crate) fn position(&self, id: TessEventId) -> Point<T> {
         self.events[id as usize].position
     }
 
@@ -430,7 +442,7 @@ impl EventQueue {
 
     fn assert_sorted(&self) {
         let mut current = self.first;
-        let mut pos = point(f32::MIN, f32::MIN);
+        let mut pos = point(T::min_value(), T::min_value());
         let mut n = 0;
         while self.valid_id(current) {
             assert!(is_after(self.events[current as usize].position, pos));
@@ -447,18 +459,18 @@ impl EventQueue {
     }
 }
 
-pub struct EventQueueBuilder {
-    current: Point,
-    prev: Point,
-    second: Point,
+pub struct EventQueueBuilder<T: Scalar> {
+    current: Point<T>,
+    prev: Point<T>,
+    second: Point<T>,
     nth: u32,
-    queue: EventQueue,
-    tolerance: f32,
+    queue: EventQueue<T>,
+    tolerance: T,
     prev_endpoint_id: EndpointId,
     validator: DebugValidator,
 }
 
-impl EventQueueBuilder {
+impl<T: Scalar> EventQueueBuilder<T> {
     // TODO: this should take the tolerance as parameter.
     pub fn new() -> Self {
         EventQueue::new().into_builder()
@@ -468,11 +480,11 @@ impl EventQueueBuilder {
         EventQueue::with_capacity(cap).into_builder()
     }
 
-    pub fn set_tolerance(&mut self, tolerance: f32) {
+    pub fn set_tolerance(&mut self, tolerance: T) {
         self.tolerance = tolerance;
     }
 
-    pub fn build(mut self) -> EventQueue {
+    pub fn build(mut self) -> EventQueue<T> {
         self.validator.build();
 
         self.queue.sort();
@@ -482,9 +494,9 @@ impl EventQueueBuilder {
 
     pub fn set_path(
         &mut self,
-        tolerance: f32,
+        tolerance: T,
         sweep_orientation: Orientation,
-        path: impl Iterator<Item = PathEvent>,
+        path: impl Iterator<Item = PathEvent<T>>,
     ) {
         self.reset();
 
@@ -498,7 +510,7 @@ impl EventQueueBuilder {
                             self.begin(at, endpoint_id);
                         }
                         PathEvent::Line { to, .. } => {
-                            self.line_segment(to, endpoint_id, 0.0, 1.0);
+                            self.line_segment(to, endpoint_id, T::ZERO, T::ONE);
                         }
                         PathEvent::Quadratic { ctrl, to, .. } => {
                             self.quadratic_bezier_segment(ctrl, to, endpoint_id);
@@ -522,7 +534,7 @@ impl EventQueueBuilder {
                             self.begin(reorient(at), endpoint_id);
                         }
                         PathEvent::Line { to, .. } => {
-                            self.line_segment(reorient(to), endpoint_id, 0.0, 1.0);
+                            self.line_segment(reorient(to), endpoint_id, T::ZERO, T::ONE);
                         }
                         PathEvent::Quadratic { ctrl, to, .. } => {
                             self.quadratic_bezier_segment(
@@ -552,10 +564,10 @@ impl EventQueueBuilder {
 
     pub fn set_path_with_ids(
         &mut self,
-        tolerance: f32,
+        tolerance: T,
         sweep_orientation: Orientation,
         path_events: impl Iterator<Item = IdEvent>,
-        points: &impl PositionStore,
+        points: &impl PositionStore<T>,
     ) {
         self.reset();
 
@@ -568,7 +580,7 @@ impl EventQueueBuilder {
                             self.begin(points.get_endpoint(at), at);
                         }
                         IdEvent::Line { to, .. } => {
-                            self.line_segment(points.get_endpoint(to), to, 0.0, 1.0);
+                            self.line_segment(points.get_endpoint(to), to, T::ZERO, T::ONE);
                         }
                         IdEvent::Quadratic { ctrl, to, .. } => {
                             self.quadratic_bezier_segment(
@@ -601,7 +613,12 @@ impl EventQueueBuilder {
                             self.begin(reorient(points.get_endpoint(at)), at);
                         }
                         IdEvent::Line { to, .. } => {
-                            self.line_segment(reorient(points.get_endpoint(to)), to, 0.0, 1.0);
+                            self.line_segment(
+                                reorient(points.get_endpoint(to)),
+                                to,
+                                T::ZERO,
+                                T::ONE,
+                            );
                         }
                         IdEvent::Quadratic { ctrl, to, .. } => {
                             self.quadratic_bezier_segment(
@@ -634,11 +651,11 @@ impl EventQueueBuilder {
         self.nth = 0;
     }
 
-    fn vertex_event(&mut self, at: Point, endpoint_id: EndpointId) {
+    fn vertex_event(&mut self, at: Point<T>, endpoint_id: EndpointId) {
         self.queue.push_unsorted(at);
         self.queue.edge_data.push(EdgeData {
-            to: point(f32::NAN, f32::NAN),
-            range: 0.0..0.0,
+            to: point(T::nan(), T::nan()),
+            range: T::ZERO..T::ZERO,
             winding: 0,
             is_edge: false,
             from_id: endpoint_id,
@@ -646,10 +663,16 @@ impl EventQueueBuilder {
         });
     }
 
-    fn vertex_event_on_curve(&mut self, at: Point, t: f32, from_id: EndpointId, to_id: EndpointId) {
+    fn vertex_event_on_curve(
+        &mut self,
+        at: Point<T>,
+        t: T,
+        from_id: EndpointId,
+        to_id: EndpointId,
+    ) {
         self.queue.push_unsorted(at);
         self.queue.edge_data.push(EdgeData {
-            to: point(f32::NAN, f32::NAN),
+            to: point(T::nan(), T::nan()),
             range: t..t,
             winding: 0,
             is_edge: false,
@@ -658,7 +681,7 @@ impl EventQueueBuilder {
         });
     }
 
-    pub fn end(&mut self, first: Point, first_endpoint_id: EndpointId) {
+    pub fn end(&mut self, first: Point<T>, first_endpoint_id: EndpointId) {
         if self.nth == 0 {
             self.validator.end();
             return;
@@ -666,7 +689,7 @@ impl EventQueueBuilder {
 
         // Unless we are already back to the first point, we need to
         // to insert an edge.
-        self.line_segment(first, first_endpoint_id, 0.0, 1.0);
+        self.line_segment(first, first_endpoint_id, T::ZERO, T::ONE);
 
         // Since we can only check for the need of a vertex event when
         // we have a previous edge, we skipped it for the first edge
@@ -681,7 +704,7 @@ impl EventQueueBuilder {
         self.nth = 0;
     }
 
-    pub fn begin(&mut self, to: Point, to_id: EndpointId) {
+    pub fn begin(&mut self, to: Point<T>, to_id: EndpointId) {
         self.validator.begin();
 
         self.nth = 0;
@@ -691,13 +714,13 @@ impl EventQueueBuilder {
 
     fn add_edge(
         &mut self,
-        from: Point,
-        to: Point,
+        from: Point<T>,
+        to: Point<T>,
         mut winding: i16,
         from_id: EndpointId,
         to_id: EndpointId,
-        mut t0: f32,
-        mut t1: f32,
+        mut t0: T,
+        mut t1: T,
     ) {
         if from == to {
             return;
@@ -726,7 +749,7 @@ impl EventQueueBuilder {
         self.nth += 1;
     }
 
-    pub fn line_segment(&mut self, to: Point, to_id: EndpointId, t0: f32, t1: f32) {
+    pub fn line_segment(&mut self, to: Point<T>, to_id: EndpointId, t0: T, t1: T) {
         self.validator.edge();
 
         let from = self.current;
@@ -751,7 +774,7 @@ impl EventQueueBuilder {
         self.current = to;
     }
 
-    pub fn quadratic_bezier_segment(&mut self, ctrl: Point, to: Point, to_id: EndpointId) {
+    pub fn quadratic_bezier_segment(&mut self, ctrl: Point<T>, to: Point<T>, to_id: EndpointId) {
         self.validator.edge();
         // Swap the curve so that it always goes downwards. This way if two
         // paths share the same edge with different windings, the flattening will
@@ -775,7 +798,7 @@ impl EventQueueBuilder {
             winding = -1;
         }
 
-        let mut t0 = 0.0;
+        let mut t0 = T::ZERO;
         let mut prev = segment.from;
         let mut from = segment.from;
         let mut first = None;
@@ -825,9 +848,9 @@ impl EventQueueBuilder {
 
     pub fn cubic_bezier_segment(
         &mut self,
-        ctrl1: Point,
-        ctrl2: Point,
-        to: Point,
+        ctrl1: Point<T>,
+        ctrl2: Point<T>,
+        to: Point<T>,
         to_id: EndpointId,
     ) {
         self.validator.edge();
@@ -855,7 +878,7 @@ impl EventQueueBuilder {
             winding = -1;
         }
 
-        let mut t0 = 0.0;
+        let mut t0 = T::ZERO;
         let mut prev = segment.from;
         let mut from = segment.from;
         let mut first = None;
@@ -910,101 +933,131 @@ impl EventQueueBuilder {
 
 #[test]
 fn test_event_queue_sort_1() {
-    let mut queue = EventQueue::new();
-    queue.push_unsorted(point(0.0, 0.0));
-    queue.push_unsorted(point(4.0, 0.0));
-    queue.push_unsorted(point(2.0, 0.0));
-    queue.push_unsorted(point(3.0, 0.0));
-    queue.push_unsorted(point(4.0, 0.0));
-    queue.push_unsorted(point(0.0, 0.0));
-    queue.push_unsorted(point(6.0, 0.0));
+    fn test_event_queue_sort_1<T: Scalar>() {
+        let mut queue = EventQueue::new();
+        queue.push_unsorted(point(T::ZERO, T::ZERO));
+        queue.push_unsorted(point(T::FOUR, T::ZERO));
+        queue.push_unsorted(point(T::TWO, T::ZERO));
+        queue.push_unsorted(point(T::THREE, T::ZERO));
+        queue.push_unsorted(point(T::FOUR, T::ZERO));
+        queue.push_unsorted(point(T::ZERO, T::ZERO));
+        queue.push_unsorted(point(T::SIX, T::ZERO));
 
-    queue.sort();
-    queue.assert_sorted();
+        queue.sort();
+        queue.assert_sorted();
+    }
+
+    test_event_queue_sort_1::<f32>();
+    test_event_queue_sort_1::<f64>();
 }
 
 #[test]
 fn test_event_queue_sort_2() {
-    let mut queue = EventQueue::new();
-    queue.push_unsorted(point(0.0, 0.0));
-    queue.push_unsorted(point(0.0, 0.0));
-    queue.push_unsorted(point(0.0, 0.0));
-    queue.push_unsorted(point(0.0, 0.0));
+    fn test_event_queue_sort_2<T: Scalar>() {
+        let mut queue = EventQueue::new();
+        queue.push_unsorted(point(T::ZERO, T::ZERO));
+        queue.push_unsorted(point(T::ZERO, T::ZERO));
+        queue.push_unsorted(point(T::ZERO, T::ZERO));
+        queue.push_unsorted(point(T::ZERO, T::ZERO));
 
-    queue.sort();
-    queue.assert_sorted();
+        queue.sort();
+        queue.assert_sorted();
+    }
+
+    test_event_queue_sort_2::<f32>();
+    test_event_queue_sort_2::<f64>();
 }
 
 #[test]
 fn test_event_queue_sort_3() {
-    let mut queue = EventQueue::new();
-    queue.push_unsorted(point(0.0, 0.0));
-    queue.push_unsorted(point(1.0, 0.0));
-    queue.push_unsorted(point(2.0, 0.0));
-    queue.push_unsorted(point(3.0, 0.0));
-    queue.push_unsorted(point(4.0, 0.0));
-    queue.push_unsorted(point(5.0, 0.0));
+    fn test_event_queue_sort_3<T: Scalar>() {
+        let mut queue = EventQueue::new();
+        queue.push_unsorted(point(T::ZERO, T::ZERO));
+        queue.push_unsorted(point(T::ONE, T::ZERO));
+        queue.push_unsorted(point(T::TWO, T::ZERO));
+        queue.push_unsorted(point(T::THREE, T::ZERO));
+        queue.push_unsorted(point(T::FOUR, T::ZERO));
+        queue.push_unsorted(point(T::FIVE, T::ZERO));
 
-    queue.sort();
-    queue.assert_sorted();
+        queue.sort();
+        queue.assert_sorted();
+    }
+
+    test_event_queue_sort_3::<f32>();
+    test_event_queue_sort_3::<f64>();
 }
 
 #[test]
 fn test_event_queue_sort_4() {
-    let mut queue = EventQueue::new();
-    queue.push_unsorted(point(5.0, 0.0));
-    queue.push_unsorted(point(4.0, 0.0));
-    queue.push_unsorted(point(3.0, 0.0));
-    queue.push_unsorted(point(2.0, 0.0));
-    queue.push_unsorted(point(1.0, 0.0));
-    queue.push_unsorted(point(0.0, 0.0));
+    fn test_event_queue_sort_4<T: Scalar>() {
+        let mut queue = EventQueue::new();
+        queue.push_unsorted(point(T::FIVE, T::ZERO));
+        queue.push_unsorted(point(T::FOUR, T::ZERO));
+        queue.push_unsorted(point(T::THREE, T::ZERO));
+        queue.push_unsorted(point(T::TWO, T::ZERO));
+        queue.push_unsorted(point(T::ONE, T::ZERO));
+        queue.push_unsorted(point(T::ZERO, T::ZERO));
 
-    queue.sort();
-    queue.assert_sorted();
+        queue.sort();
+        queue.assert_sorted();
+    }
+
+    test_event_queue_sort_4::<f32>();
+    test_event_queue_sort_4::<f64>();
 }
 
 #[test]
 fn test_event_queue_sort_5() {
-    let mut queue = EventQueue::new();
-    queue.push_unsorted(point(5.0, 0.0));
-    queue.push_unsorted(point(5.0, 0.0));
-    queue.push_unsorted(point(4.0, 0.0));
-    queue.push_unsorted(point(4.0, 0.0));
-    queue.push_unsorted(point(3.0, 0.0));
-    queue.push_unsorted(point(3.0, 0.0));
-    queue.push_unsorted(point(2.0, 0.0));
-    queue.push_unsorted(point(2.0, 0.0));
-    queue.push_unsorted(point(1.0, 0.0));
-    queue.push_unsorted(point(1.0, 0.0));
-    queue.push_unsorted(point(0.0, 0.0));
-    queue.push_unsorted(point(0.0, 0.0));
+    fn test_event_queue_sort_5<T: Scalar>() {
+        let mut queue = EventQueue::new();
+        queue.push_unsorted(point(T::FIVE, T::ZERO));
+        queue.push_unsorted(point(T::FIVE, T::ZERO));
+        queue.push_unsorted(point(T::FOUR, T::ZERO));
+        queue.push_unsorted(point(T::FOUR, T::ZERO));
+        queue.push_unsorted(point(T::THREE, T::ZERO));
+        queue.push_unsorted(point(T::THREE, T::ZERO));
+        queue.push_unsorted(point(T::TWO, T::ZERO));
+        queue.push_unsorted(point(T::TWO, T::ZERO));
+        queue.push_unsorted(point(T::ONE, T::ZERO));
+        queue.push_unsorted(point(T::ONE, T::ZERO));
+        queue.push_unsorted(point(T::ZERO, T::ZERO));
+        queue.push_unsorted(point(T::ZERO, T::ZERO));
 
-    queue.sort();
-    queue.assert_sorted();
+        queue.sort();
+        queue.assert_sorted();
+    }
+
+    test_event_queue_sort_5::<f32>();
+    test_event_queue_sort_5::<f64>();
 }
 
 #[test]
 fn test_event_queue_push_sorted() {
-    let mut queue = EventQueue::new();
-    queue.push_unsorted(point(5.0, 0.0));
-    queue.push_unsorted(point(4.0, 0.0));
-    queue.push_unsorted(point(3.0, 0.0));
-    queue.push_unsorted(point(2.0, 0.0));
-    queue.push_unsorted(point(1.0, 0.0));
-    queue.push_unsorted(point(0.0, 0.0));
+    fn test_event_queue_push_sorted<T: Scalar>() {
+        let mut queue = EventQueue::new();
+        queue.push_unsorted(point(T::FIVE, T::ZERO));
+        queue.push_unsorted(point(T::FOUR, T::ZERO));
+        queue.push_unsorted(point(T::THREE, T::ZERO));
+        queue.push_unsorted(point(T::TWO, T::ZERO));
+        queue.push_unsorted(point(T::ONE, T::ZERO));
+        queue.push_unsorted(point(T::ZERO, T::ZERO));
 
-    queue.sort();
-    queue.push_sorted(point(1.5, 0.0));
-    queue.assert_sorted();
+        queue.sort();
+        queue.push_sorted(point(T::value(1.5), T::ZERO));
+        queue.assert_sorted();
 
-    queue.push_sorted(point(2.5, 0.0));
-    queue.assert_sorted();
+        queue.push_sorted(point(T::value(2.5), T::ZERO));
+        queue.assert_sorted();
 
-    queue.push_sorted(point(2.5, 0.0));
-    queue.assert_sorted();
+        queue.push_sorted(point(T::value(2.5), T::ZERO));
+        queue.assert_sorted();
 
-    queue.push_sorted(point(6.5, 0.0));
-    queue.assert_sorted();
+        queue.push_sorted(point(T::value(6.5), T::ZERO));
+        queue.assert_sorted();
+    }
+
+    test_event_queue_push_sorted::<f32>();
+    test_event_queue_push_sorted::<f64>();
 }
 
 #[test]
@@ -1016,7 +1069,7 @@ fn test_logo() {
     crate::extra::rust_logo::build_logo_path(&mut path);
     let path = path.build();
 
-    crate::extra::debugging::find_reduced_test_case(path.as_slice(), &|path: Path| {
+    crate::extra::debugging::find_reduced_test_case(path.as_slice(), &|path: Path<f32>| {
         let _ = EventQueue::from_path(0.05, path.iter());
         true
     });

@@ -1,27 +1,28 @@
 //! Bounding rectangle computation for paths.
 
+use lyon_path::geom::Scalar;
+
 use crate::geom::{CubicBezierSegment, QuadraticBezierSegment};
 use crate::math::{point, Point, Rect};
 use crate::path::PathEvent;
-use std::f32;
 
 /// Computes a conservative axis-aligned rectangle that contains the path.
 ///
 /// This bounding rectangle approximation is faster but less precise than
 /// [`building_rect`](fn.bounding_rect.html).
-pub fn fast_bounding_rect<Iter, Evt>(path: Iter) -> Rect
+pub fn fast_bounding_rect<T: Scalar, Iter, Evt>(path: Iter) -> Rect<T>
 where
     Iter: Iterator<Item = Evt>,
-    Evt: FastBoundingRect,
+    Evt: FastBoundingRect<T>,
 {
-    let mut min = point(f32::MAX, f32::MAX);
-    let mut max = point(f32::MIN, f32::MIN);
+    let mut min = point(T::max_value(), T::max_value());
+    let mut max = point(T::min_value(), T::min_value());
     for e in path {
         e.min_max(&mut min, &mut max);
     }
 
     // Return an empty rectangle by default if there was no event in the path.
-    if min == point(f32::MAX, f32::MAX) {
+    if min == point(T::max_value(), T::max_value()) {
         return Rect::zero();
     }
 
@@ -32,12 +33,12 @@ where
 }
 
 #[doc(hidden)]
-pub trait FastBoundingRect {
-    fn min_max(&self, min: &mut Point, max: &mut Point);
+pub trait FastBoundingRect<T: Scalar> {
+    fn min_max(&self, min: &mut Point<T>, max: &mut Point<T>);
 }
 
-impl FastBoundingRect for PathEvent {
-    fn min_max(&self, min: &mut Point, max: &mut Point) {
+impl<T: Scalar> FastBoundingRect<T> for PathEvent<T> {
+    fn min_max(&self, min: &mut Point<T>, max: &mut Point<T>) {
         match self {
             PathEvent::Begin { at } => {
                 *min = Point::min(*min, *at);
@@ -63,20 +64,20 @@ impl FastBoundingRect for PathEvent {
 }
 
 /// Computes the smallest axis-aligned rectangle that contains the path.
-pub fn bounding_rect<Iter, Evt>(path: Iter) -> Rect
+pub fn bounding_rect<T: Scalar, Iter, Evt>(path: Iter) -> Rect<T>
 where
     Iter: Iterator<Item = Evt>,
-    Evt: TightBoundingRect,
+    Evt: TightBoundingRect<T>,
 {
-    let mut min = point(f32::MAX, f32::MAX);
-    let mut max = point(f32::MIN, f32::MIN);
+    let mut min = point(T::max_value(), T::max_value());
+    let mut max = point(T::max_value(), T::max_value());
 
     for evt in path {
         evt.min_max(&mut min, &mut max);
     }
 
     // Return an empty rectangle by default if there was no event in the path.
-    if min == point(f32::MAX, f32::MAX) {
+    if min == point(T::max_value(), T::max_value()) {
         return Rect::zero();
     }
 
@@ -87,12 +88,12 @@ where
 }
 
 #[doc(hidden)]
-pub trait TightBoundingRect {
-    fn min_max(&self, min: &mut Point, max: &mut Point);
+pub trait TightBoundingRect<T: Scalar> {
+    fn min_max(&self, min: &mut Point<T>, max: &mut Point<T>);
 }
 
-impl TightBoundingRect for PathEvent {
-    fn min_max(&self, min: &mut Point, max: &mut Point) {
+impl<T: Scalar> TightBoundingRect<T> for PathEvent<T> {
+    fn min_max(&self, min: &mut Point<T>, max: &mut Point<T>) {
         match self {
             PathEvent::Begin { at } => {
                 *min = Point::min(*min, *at);

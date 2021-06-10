@@ -56,6 +56,8 @@
 //!
 //! ```
 
+use lyon_geom::Scalar;
+
 use crate::events::{Event, IdEvent, PathEvent};
 use crate::math::Point;
 use crate::{ControlPointId, EndpointId, EventId, Position, PositionStore};
@@ -599,18 +601,19 @@ impl<'l, Endpoint, ControlPoint> Iterator for Events<'l, Endpoint, ControlPoint>
     }
 }
 
-impl<'l, Ep, Cp> Events<'l, Ep, Cp>
-where
-    Ep: Position,
-    Cp: Position,
-{
-    pub fn points(self) -> PointEvents<'l, Ep, Cp> {
+impl<'l, Ep, Cp> Events<'l, Ep, Cp> {
+    pub fn points<T: Scalar>(self) -> PointEvents<'l, T, Ep, Cp>
+    where
+        Ep: Position<T>,
+        Cp: Position<T>,
+    {
         PointEvents {
             cmds: self.cmds,
             prev_endpoint: self.prev_endpoint,
             first_endpoint: self.first_endpoint,
             endpoints: self.endpoints,
             control_points: self.control_points,
+            _marker: Default::default(),
         }
     }
 }
@@ -707,23 +710,28 @@ impl<'l> Iterator for Iter<'l> {
 
 /// An iterator of `PathEvent`.
 #[derive(Clone)]
-pub struct PointEvents<'l, Endpoint, ControlPoint> {
+pub struct PointEvents<'l, T: Scalar, Endpoint, ControlPoint>
+where
+    Endpoint: Position<T>,
+    ControlPoint: Position<T>,
+{
     cmds: CmdIter<'l>,
     prev_endpoint: usize,
     first_endpoint: usize,
     endpoints: &'l [Endpoint],
     control_points: &'l [ControlPoint],
+    _marker: std::marker::PhantomData<T>,
 }
 
-impl<'l, Endpoint, ControlPoint> Iterator for PointEvents<'l, Endpoint, ControlPoint>
+impl<'l, T: Scalar, Endpoint, ControlPoint> Iterator for PointEvents<'l, T, Endpoint, ControlPoint>
 where
-    Endpoint: Position,
-    ControlPoint: Position,
+    Endpoint: Position<T>,
+    ControlPoint: Position<T>,
 {
-    type Item = PathEvent;
+    type Item = PathEvent<T>;
 
     #[inline]
-    fn next(&mut self) -> Option<PathEvent> {
+    fn next(&mut self) -> Option<PathEvent<T>> {
         match self.cmds.next() {
             Some(verb::BEGIN) => {
                 let to = self.cmds.next().unwrap() as usize;
@@ -793,16 +801,17 @@ where
     }
 }
 
-impl<'l, Endpoint, ControlPoint> PositionStore for CommandsPathSlice<'l, Endpoint, ControlPoint>
+impl<'l, T: Scalar, Endpoint, ControlPoint> PositionStore<T>
+    for CommandsPathSlice<'l, Endpoint, ControlPoint>
 where
-    Endpoint: Position,
-    ControlPoint: Position,
+    Endpoint: Position<T>,
+    ControlPoint: Position<T>,
 {
-    fn get_endpoint(&self, id: EndpointId) -> Point {
+    fn get_endpoint(&self, id: EndpointId) -> Point<T> {
         self[id].position()
     }
 
-    fn get_control_point(&self, id: ControlPointId) -> Point {
+    fn get_control_point(&self, id: ControlPointId) -> Point<T> {
         self[id].position()
     }
 }

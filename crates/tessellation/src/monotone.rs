@@ -1,3 +1,5 @@
+use lyon_path::geom::Scalar;
+
 use crate::fill::is_after;
 use crate::math::{point, Point};
 use crate::Side;
@@ -5,34 +7,34 @@ use crate::{FillGeometryBuilder, VertexId};
 
 /// Helper class that generates a triangulation from a sequence of vertices describing a monotone
 /// polygon (used internally by the `FillTessellator`).
-pub(crate) struct BasicMonotoneTessellator {
-    stack: Vec<MonotoneVertex>,
-    previous: MonotoneVertex,
+pub(crate) struct BasicMonotoneTessellator<T: Scalar> {
+    stack: Vec<MonotoneVertex<T>>,
+    previous: MonotoneVertex<T>,
     triangles: Vec<(VertexId, VertexId, VertexId)>,
 }
 
 #[derive(Copy, Clone, Debug)]
-struct MonotoneVertex {
-    pos: Point,
+struct MonotoneVertex<T: Scalar> {
+    pos: Point<T>,
     id: VertexId,
     side: Side,
 }
 
-impl BasicMonotoneTessellator {
+impl<T: Scalar> BasicMonotoneTessellator<T> {
     pub fn new() -> Self {
         BasicMonotoneTessellator {
             stack: Vec::new(),
             triangles: Vec::new(),
             // Some placeholder value that will be replaced right away.
             previous: MonotoneVertex {
-                pos: Point::new(0.0, 0.0),
+                pos: Point::new(T::ZERO, T::ZERO),
                 id: VertexId(0),
                 side: Side::Left,
             },
         }
     }
 
-    pub fn begin(&mut self, pos: Point, id: VertexId) {
+    pub fn begin(&mut self, pos: Point<T>, id: VertexId) {
         debug_assert!(id != VertexId::INVALID);
         let first = MonotoneVertex {
             pos,
@@ -50,11 +52,11 @@ impl BasicMonotoneTessellator {
     }
 
     #[inline]
-    pub fn vertex(&mut self, pos: Point, id: VertexId, side: Side) {
+    pub fn vertex(&mut self, pos: Point<T>, id: VertexId, side: Side) {
         self.monotone_vertex(MonotoneVertex { pos, id, side });
     }
 
-    fn monotone_vertex(&mut self, current: MonotoneVertex) {
+    fn monotone_vertex(&mut self, current: MonotoneVertex<T>) {
         debug_assert!(current.id != VertexId::INVALID);
         // cf. test_fixed_to_f32_precision
         debug_assert!(current.pos.y >= self.previous.pos.y);
@@ -67,7 +69,7 @@ impl BasicMonotoneTessellator {
                 let mut a = self.stack[i];
                 let mut b = self.stack[i + 1];
 
-                let winding = (a.pos - b.pos).cross(current.pos - b.pos) >= 0.0;
+                let winding = (a.pos - b.pos).cross(current.pos - b.pos) >= T::ZERO;
 
                 if !winding {
                     std::mem::swap(&mut a, &mut b);
@@ -88,7 +90,7 @@ impl BasicMonotoneTessellator {
                 }
 
                 let cross = (current.pos - b.pos).cross(a.pos - b.pos);
-                if cross >= 0.0 {
+                if cross >= T::ZERO {
                     self.push_triangle(&b, &a, &current);
                     last_popped = self.stack.pop();
                 } else {
@@ -106,15 +108,20 @@ impl BasicMonotoneTessellator {
         return;
     }
 
-    pub fn end(&mut self, pos: Point, id: VertexId) {
+    pub fn end(&mut self, pos: Point<T>, id: VertexId) {
         let side = self.previous.side.opposite();
         self.vertex(pos, id, side);
         self.stack.clear();
     }
 
     #[inline]
-    fn push_triangle(&mut self, a: &MonotoneVertex, b: &MonotoneVertex, c: &MonotoneVertex) {
-        let threshold = -0.0625; // Floating point errors stroke again :(
+    fn push_triangle(
+        &mut self,
+        a: &MonotoneVertex<T>,
+        b: &MonotoneVertex<T>,
+        c: &MonotoneVertex<T>,
+    ) {
+        let threshold = T::value(-0.0625); // Floating point errors stroke again :(
         debug_assert!((a.pos - b.pos).cross(c.pos - b.pos) >= threshold);
 
         self.push_triangle_ids(a.id, b.id, c.id);
@@ -131,7 +138,7 @@ impl BasicMonotoneTessellator {
         self.triangles.push((a, b, c));
     }
 
-    pub fn flush(&mut self, output: &mut dyn FillGeometryBuilder) {
+    pub fn flush(&mut self, output: &mut dyn FillGeometryBuilder<T>) {
         for &(a, b, c) in &self.triangles {
             output.add_triangle(a, b, c);
         }
@@ -141,53 +148,58 @@ impl BasicMonotoneTessellator {
 
 #[test]
 fn test_monotone_tess() {
-    println!(" ------------ ");
-    {
-        let mut tess = BasicMonotoneTessellator::new();
-        tess.begin(point(0.0, 0.0), VertexId(0));
-        tess.vertex(point(-1.0, 1.0), VertexId(1), Side::Left);
-        tess.end(point(1.0, 2.0), VertexId(2));
-        assert_eq!(tess.triangles.len(), 1);
+    fn test_monotone_tess<T: Scalar>() {
+        println!(" ------------ ");
+        {
+            let mut tess = BasicMonotoneTessellator::new();
+            tess.begin(point(T::ZERO, T::ZERO), VertexId(0));
+            tess.vertex(point(-T::ONE, T::ONE), VertexId(1), Side::Left);
+            tess.end(point(T::ONE, T::TWO), VertexId(2));
+            assert_eq!(tess.triangles.len(), 1);
+        }
+        println!(" ------------ ");
+        {
+            let mut tess = BasicMonotoneTessellator::new();
+            tess.begin(point(T::ZERO, T::ZERO), VertexId(0));
+            tess.vertex(point(T::ONE, T::ONE), VertexId(1), Side::Right);
+            tess.vertex(point(T::value(-1.5), T::TWO), VertexId(2), Side::Left);
+            tess.vertex(point(-T::ONE, T::THREE), VertexId(3), Side::Left);
+            tess.vertex(point(T::ONE, T::FOUR), VertexId(4), Side::Right);
+            tess.end(point(T::ZERO, T::FIVE), VertexId(5));
+            assert_eq!(tess.triangles.len(), 4);
+        }
+        println!(" ------------ ");
+        {
+            let mut tess = BasicMonotoneTessellator::new();
+            tess.begin(point(T::ZERO, T::ZERO), VertexId(0));
+            tess.vertex(point(T::ONE, T::ONE), VertexId(1), Side::Right);
+            tess.vertex(point(T::THREE, T::TWO), VertexId(2), Side::Right);
+            tess.vertex(point(T::ONE, T::THREE), VertexId(3), Side::Right);
+            tess.vertex(point(T::ONE, T::FOUR), VertexId(4), Side::Right);
+            tess.vertex(point(T::FOUR, T::FIVE), VertexId(5), Side::Right);
+            tess.end(point(T::ZERO, T::SIX), VertexId(6));
+            assert_eq!(tess.triangles.len(), 5);
+        }
+        println!(" ------------ ");
+        {
+            let mut tess = BasicMonotoneTessellator::new();
+            tess.begin(point(T::ZERO, T::ZERO), VertexId(0));
+            tess.vertex(point(-T::ONE, T::ONE), VertexId(1), Side::Left);
+            tess.vertex(point(-T::THREE, T::TWO), VertexId(2), Side::Left);
+            tess.vertex(point(-T::ONE, T::THREE), VertexId(3), Side::Left);
+            tess.vertex(point(-T::ONE, T::FOUR), VertexId(4), Side::Left);
+            tess.vertex(point(-T::FOUR, T::FIVE), VertexId(5), Side::Left);
+            tess.end(point(T::ZERO, T::SIX), VertexId(6));
+            assert_eq!(tess.triangles.len(), 5);
+        }
+        println!(" ------------ ");
     }
-    println!(" ------------ ");
-    {
-        let mut tess = BasicMonotoneTessellator::new();
-        tess.begin(point(0.0, 0.0), VertexId(0));
-        tess.vertex(point(1.0, 1.0), VertexId(1), Side::Right);
-        tess.vertex(point(-1.5, 2.0), VertexId(2), Side::Left);
-        tess.vertex(point(-1.0, 3.0), VertexId(3), Side::Left);
-        tess.vertex(point(1.0, 4.0), VertexId(4), Side::Right);
-        tess.end(point(0.0, 5.0), VertexId(5));
-        assert_eq!(tess.triangles.len(), 4);
-    }
-    println!(" ------------ ");
-    {
-        let mut tess = BasicMonotoneTessellator::new();
-        tess.begin(point(0.0, 0.0), VertexId(0));
-        tess.vertex(point(1.0, 1.0), VertexId(1), Side::Right);
-        tess.vertex(point(3.0, 2.0), VertexId(2), Side::Right);
-        tess.vertex(point(1.0, 3.0), VertexId(3), Side::Right);
-        tess.vertex(point(1.0, 4.0), VertexId(4), Side::Right);
-        tess.vertex(point(4.0, 5.0), VertexId(5), Side::Right);
-        tess.end(point(0.0, 6.0), VertexId(6));
-        assert_eq!(tess.triangles.len(), 5);
-    }
-    println!(" ------------ ");
-    {
-        let mut tess = BasicMonotoneTessellator::new();
-        tess.begin(point(0.0, 0.0), VertexId(0));
-        tess.vertex(point(-1.0, 1.0), VertexId(1), Side::Left);
-        tess.vertex(point(-3.0, 2.0), VertexId(2), Side::Left);
-        tess.vertex(point(-1.0, 3.0), VertexId(3), Side::Left);
-        tess.vertex(point(-1.0, 4.0), VertexId(4), Side::Left);
-        tess.vertex(point(-4.0, 5.0), VertexId(5), Side::Left);
-        tess.end(point(0.0, 6.0), VertexId(6));
-        assert_eq!(tess.triangles.len(), 5);
-    }
-    println!(" ------------ ");
+
+    test_monotone_tess::<f32>();
+    test_monotone_tess::<f64>();
 }
 
-struct SideEvents {
+struct SideEvents<T: Scalar> {
     // We decide whether we have to flush a convex vertex chain based on
     // whether the two sides are far apart. reference_point.x contains the
     // center-most x coordinate of the current chain of vertex. It is not
@@ -195,34 +207,34 @@ struct SideEvents {
     // a chain of vertex on the opposite side that is still current, so we
     // also keep track of a conservative reference x value which is not not
     // relaxed until the opposite side has is flushed. See issue #623.
-    reference_point: Point,
-    conservative_reference_x: f32,
+    reference_point: Point<T>,
+    conservative_reference_x: T,
     // A convex chain of vertex events for this side that can be tessellated
     // without interference from the other side.
     events: Vec<VertexId>,
-    prev: Point,
-    last: MonotoneVertex,
+    prev: Point<T>,
+    last: MonotoneVertex<T>,
 }
 
-impl SideEvents {
+impl<T: Scalar> SideEvents<T> {
     #[inline]
-    fn push(&mut self, vertex: MonotoneVertex) {
+    fn push(&mut self, vertex: MonotoneVertex<T>) {
         self.events.push(vertex.id);
         self.prev = self.last.pos;
         self.last = vertex;
     }
 }
 
-pub struct AdvancedMonotoneTessellator {
-    tess: BasicMonotoneTessellator,
-    left: SideEvents,
-    right: SideEvents,
+pub struct AdvancedMonotoneTessellator<T: Scalar> {
+    tess: BasicMonotoneTessellator<T>,
+    left: SideEvents<T>,
+    right: SideEvents<T>,
     flushing: bool,
 }
 
-impl AdvancedMonotoneTessellator {
+impl<T: Scalar> AdvancedMonotoneTessellator<T> {
     pub fn new() -> Self {
-        let zero = point(0.0, 0.0);
+        let zero = point(T::ZERO, T::ZERO);
         let dummy_vtx = MonotoneVertex {
             pos: zero,
             id: VertexId(0),
@@ -232,14 +244,14 @@ impl AdvancedMonotoneTessellator {
             left: SideEvents {
                 events: Vec::with_capacity(16),
                 reference_point: zero,
-                conservative_reference_x: 0.0,
+                conservative_reference_x: T::ZERO,
                 prev: zero,
                 last: dummy_vtx,
             },
             right: SideEvents {
                 events: Vec::with_capacity(16),
                 reference_point: zero,
-                conservative_reference_x: 0.0,
+                conservative_reference_x: T::ZERO,
                 prev: zero,
                 last: dummy_vtx,
             },
@@ -248,7 +260,7 @@ impl AdvancedMonotoneTessellator {
         }
     }
 
-    pub fn begin(&mut self, pos: Point, id: VertexId) {
+    pub fn begin(&mut self, pos: Point<T>, id: VertexId) {
         self.tess.begin(pos, id);
         self.left.reference_point = pos;
         self.left.conservative_reference_x = pos.x;
@@ -272,7 +284,7 @@ impl AdvancedMonotoneTessellator {
         });
     }
 
-    pub fn vertex(&mut self, pos: Point, id: VertexId, side: Side) {
+    pub fn vertex(&mut self, pos: Point<T>, id: VertexId, side: Side) {
         match side {
             Side::Left => {
                 self.left.reference_point.x = self.left.reference_point.x.max(pos.x);
@@ -298,17 +310,17 @@ impl AdvancedMonotoneTessellator {
         };
 
         let dy = pos.y - side_ev.reference_point.y;
-        let sides_are_close = dx < dy * 0.1;
+        let sides_are_close = dx < dy * T::ONE_TENTH;
 
         let len = side_ev.events.len();
         let outward_turn = if !sides_are_close && len >= 2 {
             let sign = match side {
-                Side::Left => 1.0,
-                Side::Right => -1.0,
+                Side::Left => T::ONE,
+                Side::Right => -T::ONE,
             };
             let prev = side_ev.prev;
             let last = side_ev.last.pos;
-            (prev - last).cross(pos - last) * sign < 0.0
+            (prev - last).cross(pos - last) * sign < T::ZERO
         } else {
             false
         };
@@ -334,7 +346,7 @@ impl AdvancedMonotoneTessellator {
         side_ev.push(MonotoneVertex { pos, id, side });
     }
 
-    pub fn end(&mut self, pos: Point, id: VertexId) {
+    pub fn end(&mut self, pos: Point<T>, id: VertexId) {
         let a = flush_side(&mut self.left, Side::Left, &mut self.tess);
         let b = flush_side(&mut self.right, Side::Right, &mut self.tess);
         match (a, b) {
@@ -354,17 +366,17 @@ impl AdvancedMonotoneTessellator {
         self.tess.end(pos, id);
     }
 
-    pub fn flush(&mut self, output: &mut dyn FillGeometryBuilder) {
+    pub fn flush(&mut self, output: &mut dyn FillGeometryBuilder<T>) {
         self.tess.flush(output);
     }
 }
 
 #[inline(never)]
-fn flush_side(
-    side: &mut SideEvents,
+fn flush_side<T: Scalar>(
+    side: &mut SideEvents<T>,
     s: Side,
-    tess: &mut BasicMonotoneTessellator,
-) -> Option<MonotoneVertex> {
+    tess: &mut BasicMonotoneTessellator<T>,
+) -> Option<MonotoneVertex<T>> {
     let len = side.events.len();
     if len < 2 {
         return None;
@@ -404,4 +416,4 @@ fn flush_side(
     Some(side.last)
 }
 
-pub type MonotoneTessellator = AdvancedMonotoneTessellator;
+pub type MonotoneTessellator<T> = AdvancedMonotoneTessellator<T>;

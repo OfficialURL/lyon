@@ -183,6 +183,7 @@ pub use lyon_path as path;
 
 #[cfg(test)]
 use lyon_extra as extra;
+use path::geom::Scalar;
 
 #[cfg(feature = "serialization")]
 #[macro_use]
@@ -329,14 +330,14 @@ pub use stroke::StrokeVertex;
 /// one or several edges, at a certain parameter `t` between the two endpoints
 /// of the edge.
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum VertexSource {
+pub enum VertexSource<T: Scalar> {
     Endpoint {
         id: EndpointId,
     },
     Edge {
         from: EndpointId,
         to: EndpointId,
-        t: f32,
+        t: T,
     },
 }
 
@@ -414,7 +415,7 @@ pub enum Orientation {
 /// Parameters for the tessellator.
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
-pub struct StrokeOptions {
+pub struct StrokeOptions<T: Scalar> {
     /// What cap to use at the start of each sub-path.
     ///
     /// Default value: `LineCap::Butt`.
@@ -433,38 +434,38 @@ pub struct StrokeOptions {
     /// Line width
     ///
     /// Default value: `StrokeOptions::DEFAULT_LINE_WIDTH`.
-    pub line_width: f32,
+    pub line_width: T,
 
     /// See the SVG specification.
     ///
     /// Must be greater than or equal to 1.0.
     /// Default value: `StrokeOptions::DEFAULT_MITER_LIMIT`.
-    pub miter_limit: f32,
+    pub miter_limit: T,
 
     /// Maximum allowed distance to the path when building an approximation.
     ///
     /// See [Flattening and tolerance](index.html#flattening-and-tolerance).
     /// Default value: `StrokeOptions::DEFAULT_TOLERANCE`.
-    pub tolerance: f32,
+    pub tolerance: T,
 
     // To be able to add fields without making it a breaking change, add an empty private field
     // which makes it impossible to create a StrokeOptions without calling the constructor.
     _private: (),
 }
 
-impl StrokeOptions {
+impl<T: Scalar> StrokeOptions<T> {
     /// Minimum miter limit as defined by the SVG specification.
     ///
     /// See [StrokeMiterLimitProperty](https://svgwg.org/specs/strokes/#StrokeMiterlimitProperty)
-    pub const MINIMUM_MITER_LIMIT: f32 = 1.0;
+    pub const MINIMUM_MITER_LIMIT: T = T::ONE;
     /// Default miter limit as defined by the SVG specification.
     ///
     /// See [StrokeMiterLimitProperty](https://svgwg.org/specs/strokes/#StrokeMiterlimitProperty)
-    pub const DEFAULT_MITER_LIMIT: f32 = 4.0;
+    pub const DEFAULT_MITER_LIMIT: T = T::FOUR;
     pub const DEFAULT_LINE_CAP: LineCap = LineCap::Butt;
     pub const DEFAULT_LINE_JOIN: LineJoin = LineJoin::Miter;
-    pub const DEFAULT_LINE_WIDTH: f32 = 1.0;
-    pub const DEFAULT_TOLERANCE: f32 = 0.1;
+    pub const DEFAULT_LINE_WIDTH: T = T::ONE;
+    pub const DEFAULT_TOLERANCE: T = T::ONE_TENTH;
 
     pub const DEFAULT: Self = StrokeOptions {
         start_cap: Self::DEFAULT_LINE_CAP,
@@ -477,12 +478,12 @@ impl StrokeOptions {
     };
 
     #[inline]
-    pub fn tolerance(tolerance: f32) -> Self {
+    pub fn tolerance(tolerance: T) -> Self {
         Self::DEFAULT.with_tolerance(tolerance)
     }
 
     #[inline]
-    pub fn with_tolerance(mut self, tolerance: f32) -> Self {
+    pub fn with_tolerance(mut self, tolerance: T) -> Self {
         self.tolerance = tolerance;
         self
     }
@@ -513,20 +514,20 @@ impl StrokeOptions {
     }
 
     #[inline]
-    pub fn with_line_width(mut self, width: f32) -> Self {
+    pub fn with_line_width(mut self, width: T) -> Self {
         self.line_width = width;
         self
     }
 
     #[inline]
-    pub fn with_miter_limit(mut self, limit: f32) -> Self {
+    pub fn with_miter_limit(mut self, limit: T) -> Self {
         assert!(limit >= Self::MINIMUM_MITER_LIMIT);
         self.miter_limit = limit;
         self
     }
 }
 
-impl Default for StrokeOptions {
+impl<T: Scalar> Default for StrokeOptions<T> {
     fn default() -> Self {
         Self::DEFAULT
     }
@@ -535,13 +536,13 @@ impl Default for StrokeOptions {
 /// Parameters for the fill tessellator.
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
-pub struct FillOptions {
+pub struct FillOptions<T: Scalar> {
     /// Maximum allowed distance to the path when building an approximation.
     ///
     /// See [Flattening and tolerance](index.html#flattening-and-tolerance).
     ///
     /// Default value: `FillOptions::DEFAULT_TOLERANCE`.
-    pub tolerance: f32,
+    pub tolerance: T,
 
     /// Set the fill rule.
     ///
@@ -571,9 +572,9 @@ pub struct FillOptions {
     _private: (),
 }
 
-impl FillOptions {
+impl<T: Scalar> FillOptions<T> {
     /// Default flattening tolerance.
-    pub const DEFAULT_TOLERANCE: f32 = 0.1;
+    pub const DEFAULT_TOLERANCE: T = T::ONE_TENTH;
     /// Default Fill rule.
     pub const DEFAULT_FILL_RULE: FillRule = FillRule::EvenOdd;
     /// Default orientation.
@@ -593,7 +594,7 @@ impl FillOptions {
     }
 
     #[inline]
-    pub fn tolerance(tolerance: f32) -> Self {
+    pub fn tolerance(tolerance: T) -> Self {
         Self::DEFAULT.with_tolerance(tolerance)
     }
 
@@ -605,7 +606,7 @@ impl FillOptions {
     }
 
     #[inline]
-    pub fn with_tolerance(mut self, tolerance: f32) -> Self {
+    pub fn with_tolerance(mut self, tolerance: T) -> Self {
         self.tolerance = tolerance;
         self
     }
@@ -629,7 +630,7 @@ impl FillOptions {
     }
 }
 
-impl Default for FillOptions {
+impl<T: Scalar> Default for FillOptions<T> {
     fn default() -> Self {
         Self::DEFAULT
     }
@@ -732,34 +733,44 @@ fn test_with_miter_limit() {
 #[test]
 #[should_panic]
 fn test_with_invalid_miter_limit() {
-    let _ = StrokeOptions::default().with_miter_limit(0.0);
+    fn test_with_invalid_miter_limit<T: Scalar>() {
+        let _ = StrokeOptions::default().with_miter_limit(T::ZERO);
+    }
+
+    test_with_invalid_miter_limit::<f32>();
+    test_with_invalid_miter_limit::<f64>();
 }
 
 #[test]
 fn test_line_width() {
-    use crate::math::{point, Point};
-    let mut builder = crate::path::Path::builder();
-    builder.begin(point(0.0, 1.0));
-    builder.line_to(point(2.0, 1.0));
-    builder.end(false);
-    let path = builder.build();
+    fn test_line_width<T: Scalar>() {
+        use crate::math::{point, Point};
+        let mut builder = crate::path::Path::builder();
+        builder.begin(point(T::ZERO, T::ONE));
+        builder.line_to(point(T::TWO, T::ONE));
+        builder.end(false);
+        let path = builder.build();
 
-    let options = StrokeOptions::DEFAULT.with_line_width(2.0);
-    let mut geometry: VertexBuffers<Point, u16> = VertexBuffers::new();
-    StrokeTessellator::new()
-        .tessellate(
-            path.iter(),
-            &options,
-            &mut crate::geometry_builder::simple_builder(&mut geometry),
-        )
-        .unwrap();
+        let options = StrokeOptions::DEFAULT.with_line_width(T::TWO);
+        let mut geometry: VertexBuffers<Point<T>, u16> = VertexBuffers::new();
+        StrokeTessellator::new()
+            .tessellate(
+                path.iter(),
+                &options,
+                &mut crate::geometry_builder::simple_builder(&mut geometry),
+            )
+            .unwrap();
 
-    for p in &geometry.vertices {
-        assert!(
-            *p == point(0.0, 0.0)
-                || *p == point(0.0, 2.0)
-                || *p == point(2.0, 0.0)
-                || *p == point(2.0, 2.0)
-        );
+        for p in &geometry.vertices {
+            assert!(
+                *p == point(T::ZERO, T::ZERO)
+                    || *p == point(T::ZERO, T::TWO)
+                    || *p == point(T::TWO, T::ZERO)
+                    || *p == point(T::TWO, T::TWO)
+            );
+        }
     }
+
+    test_line_width::<f32>();
+    test_line_width::<f64>();
 }

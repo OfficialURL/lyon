@@ -2,6 +2,8 @@
 // but are exposed for use by other lyon crates.
 // Changing them doesn't necessarily imply semver breaking bumps.
 
+use lyon_geom::Scalar;
+
 pub use crate::geom::{CubicBezierSegment, QuadraticBezierSegment};
 pub use crate::math::Point;
 pub use crate::traits::PathBuilder;
@@ -57,12 +59,12 @@ impl DebugValidator {
     }
 }
 
-pub fn flatten_quadratic_bezier(
-    tolerance: f32,
-    from: Point,
-    ctrl: Point,
-    to: Point,
-    builder: &mut impl PathBuilder,
+pub fn flatten_quadratic_bezier<T: Scalar>(
+    tolerance: T,
+    from: Point<T>,
+    ctrl: Point<T>,
+    to: Point<T>,
+    builder: &mut impl PathBuilder<T>,
 ) -> EndpointId {
     let curve = QuadraticBezierSegment { from, ctrl, to };
     let mut id = EndpointId::INVALID;
@@ -73,13 +75,13 @@ pub fn flatten_quadratic_bezier(
     id
 }
 
-pub fn flatten_cubic_bezier(
-    tolerance: f32,
-    from: Point,
-    ctrl1: Point,
-    ctrl2: Point,
-    to: Point,
-    builder: &mut impl PathBuilder,
+pub fn flatten_cubic_bezier<T: Scalar>(
+    tolerance: T,
+    from: Point<T>,
+    ctrl1: Point<T>,
+    ctrl2: Point<T>,
+    to: Point<T>,
+    builder: &mut impl PathBuilder<T>,
 ) -> EndpointId {
     let curve = CubicBezierSegment {
         from,

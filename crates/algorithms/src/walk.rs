@@ -39,17 +39,17 @@
 //! ```
 //!
 
+use lyon_path::geom::Scalar;
+
 use crate::geom::{CubicBezierSegment, QuadraticBezierSegment};
 use crate::math::*;
 use crate::path::builder::*;
 use crate::path::{EndpointId, PathEvent};
 
-use std::f32;
-
 /// Walks along the path staring at offset `start` and applies a `Pattern`.
-pub fn walk_along_path<Iter>(path: Iter, start: f32, pattern: &mut dyn Pattern)
+pub fn walk_along_path<T: Scalar, Iter>(path: Iter, start: T, pattern: &mut dyn Pattern<T>)
 where
-    Iter: Iterator<Item = PathEvent>,
+    Iter: Iterator<Item = PathEvent<T>>,
 {
     let mut walker = PathWalker::new(start, pattern);
     for evt in path {
@@ -69,13 +69,13 @@ where
 ///
 /// See the `RegularPattern` and `RepeatedPattern` implementations.
 /// This trait is also implemented for all functions/closures with signature
-/// `FnMut(Point, Vector, f32) -> Option<f32>`.
-pub trait Pattern {
+/// `FnMut(Point<T>, Vector<T>, T) -> Option<T>`.
+pub trait Pattern<T: Scalar> {
     /// This method is invoked at each step along the path.
     ///
     /// If this method returns None, path walking stops. Otherwise the returned
     /// value is the distance along the path to the next element in the pattern.
-    fn next(&mut self, position: Point, tangent: Vector, distance: f32) -> Option<f32>;
+    fn next(&mut self, position: Point<T>, tangent: Vector<T>, distance: T) -> Option<T>;
 
     /// Invoked at the start each sub-path.
     ///
@@ -84,32 +84,32 @@ pub trait Pattern {
     ///
     /// If this method returns None, path walking stops. Otherwise the returned
     /// value is the distance along the path to the next element in the pattern.
-    fn begin(&mut self, distance: f32) -> Option<f32> {
+    fn begin(&mut self, distance: T) -> Option<T> {
         Some(distance)
     }
 }
 
 /// A helper struct to walk along a flattened path using a builder API.
-pub struct PathWalker<'l> {
-    prev: Point,
-    advancement: f32,
-    leftover: f32,
-    next_distance: f32,
-    first: Point,
+pub struct PathWalker<'l, T: Scalar> {
+    prev: Point<T>,
+    advancement: T,
+    leftover: T,
+    next_distance: T,
+    first: Point<T>,
     need_moveto: bool,
     done: bool,
 
-    pattern: &'l mut dyn Pattern,
+    pattern: &'l mut dyn Pattern<T>,
 }
 
-impl<'l> PathWalker<'l> {
-    pub fn new(start: f32, pattern: &'l mut dyn Pattern) -> PathWalker<'l> {
-        let start = f32::max(start, 0.0);
-        PathWalker {
-            prev: point(0.0, 0.0),
-            first: point(0.0, 0.0),
-            advancement: 0.0,
-            leftover: 0.0,
+impl<'l, T: Scalar> PathWalker<'l, T> {
+    pub fn new(start: T, pattern: &'l mut dyn Pattern<T>) -> Self {
+        let start = T::max(start, T::ZERO);
+        Self {
+            prev: point(T::ZERO, T::ZERO),
+            first: point(T::ZERO, T::ZERO),
+            advancement: T::ZERO,
+            leftover: T::ZERO,
             next_distance: start,
             need_moveto: true,
             done: false,
@@ -118,8 +118,8 @@ impl<'l> PathWalker<'l> {
     }
 }
 
-impl<'l> PathBuilder for PathWalker<'l> {
-    fn begin(&mut self, to: Point) -> EndpointId {
+impl<'l, T: Scalar> PathBuilder<T> for PathWalker<'l, T> {
+    fn begin(&mut self, to: Point<T>) -> EndpointId {
         self.need_moveto = false;
         self.first = to;
         self.prev = to;
@@ -133,13 +133,13 @@ impl<'l> PathBuilder for PathWalker<'l> {
         EndpointId::INVALID
     }
 
-    fn line_to(&mut self, to: Point) -> EndpointId {
+    fn line_to(&mut self, to: Point<T>) -> EndpointId {
         debug_assert!(!self.need_moveto);
 
         let v = to - self.prev;
         let d = v.length();
 
-        if d < 1e-5 {
+        if d < T::EPSILON {
             return EndpointId::INVALID;
         }
 
@@ -149,7 +149,7 @@ impl<'l> PathBuilder for PathWalker<'l> {
         while distance >= self.next_distance {
             let position = self.prev + tangent * (self.next_distance - self.leftover);
             self.prev = position;
-            self.leftover = 0.0;
+            self.leftover = T::ZERO;
             self.advancement += self.next_distance;
             distance -= self.next_distance;
 
@@ -175,27 +175,27 @@ impl<'l> PathBuilder for PathWalker<'l> {
         }
     }
 
-    fn quadratic_bezier_to(&mut self, ctrl: Point, to: Point) -> EndpointId {
+    fn quadratic_bezier_to(&mut self, ctrl: Point<T>, to: Point<T>) -> EndpointId {
         let curve = QuadraticBezierSegment {
             from: self.prev,
             ctrl,
             to,
         };
-        curve.for_each_flattened(0.01, &mut |p| {
+        curve.for_each_flattened(T::value(0.01), &mut |p| {
             self.line_to(p);
         });
 
         EndpointId::INVALID
     }
 
-    fn cubic_bezier_to(&mut self, ctrl1: Point, ctrl2: Point, to: Point) -> EndpointId {
+    fn cubic_bezier_to(&mut self, ctrl1: Point<T>, ctrl2: Point<T>, to: Point<T>) -> EndpointId {
         let curve = CubicBezierSegment {
             from: self.prev,
             ctrl1,
             ctrl2,
             to,
         };
-        curve.for_each_flattened(0.01, &mut |p| {
+        curve.for_each_flattened(T::value(0.01), &mut |p| {
             self.line_to(p);
         });
 
@@ -206,19 +206,19 @@ impl<'l> PathBuilder for PathWalker<'l> {
 /// A simple pattern that invokes a callback at regular intervals.
 ///
 /// If the callback returns false, path walking stops.
-pub struct RegularPattern<Cb> {
+pub struct RegularPattern<T: Scalar, Cb> {
     /// The function to call at each step.
     pub callback: Cb,
     /// A constant interval between each step.
-    pub interval: f32,
+    pub interval: T,
 }
 
-impl<Cb> Pattern for RegularPattern<Cb>
+impl<T: Scalar, Cb> Pattern<T> for RegularPattern<T,Cb>
 where
-    Cb: FnMut(Point, Vector, f32) -> bool,
+    Cb: FnMut(Point<T>, Vector<T>, T) -> bool,
 {
     #[inline]
-    fn next(&mut self, position: Point, tangent: Vector, distance: f32) -> Option<f32> {
+    fn next(&mut self, position: Point<T>, tangent: Vector<T>, distance: T) -> Option<T> {
         if !(self.callback)(position, tangent, distance) {
             return None;
         }
@@ -230,21 +230,21 @@ where
 /// constant intervals.
 ///
 /// If the callback returns false, path walking stops.
-pub struct RepeatedPattern<'l, Cb> {
+pub struct RepeatedPattern<'l, T: Scalar, Cb> {
     /// The function to call at each step.
     pub callback: Cb,
     /// The repeated interval sequence.
-    pub intervals: &'l [f32],
+    pub intervals: &'l [T],
     /// The index of the next interval in the sequence.
     pub index: usize,
 }
 
-impl<'l, Cb> Pattern for RepeatedPattern<'l, Cb>
+impl<'l, T: Scalar, Cb> Pattern<T> for RepeatedPattern<'l, T, Cb>
 where
-    Cb: FnMut(Point, Vector, f32) -> bool,
+    Cb: FnMut(Point<T>, Vector<T>, T) -> bool,
 {
     #[inline]
-    fn next(&mut self, position: Point, tangent: Vector, distance: f32) -> Option<f32> {
+    fn next(&mut self, position: Point<T>, tangent: Vector<T>, distance: T) -> Option<T> {
         if !(self.callback)(position, tangent, distance) {
             return None;
         }
@@ -254,12 +254,12 @@ where
     }
 }
 
-impl<Cb> Pattern for Cb
+impl<T: Scalar, Cb> Pattern<T> for Cb
 where
-    Cb: FnMut(Point, Vector, f32) -> Option<f32>,
+    Cb: FnMut(Point<T>, Vector<T>, T) -> Option<T>,
 {
     #[inline]
-    fn next(&mut self, position: Point, tangent: Vector, distance: f32) -> Option<f32> {
+    fn next(&mut self, position: Point<T>, tangent: Vector<T>, distance: T) -> Option<T> {
         (self)(position, tangent, distance)
     }
 }

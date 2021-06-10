@@ -6,6 +6,7 @@
 use crate::math::*;
 use crate::path::polygon::Polygon;
 use crate::path::{Path, PathEvent};
+use lyon_path::geom::Scalar;
 use sid::{Id, IdRange, IdSlice, IdVec};
 use std::ops;
 use std::u16;
@@ -42,16 +43,16 @@ struct SubPath {
 
 /// A flexible path data structure that can be efficiently traversed and modified.
 #[derive(Clone)]
-pub struct AdvancedPath {
-    points: IdVec<VertexId, Point>,
+pub struct AdvancedPath<T: Scalar> {
+    points: IdVec<VertexId, Point<T>>,
     edges: IdVec<EdgeId, EdgeInfo>,
     sub_paths: IdVec<SubPathId, SubPath>,
 }
 
-impl AdvancedPath {
+impl<T: Scalar> AdvancedPath<T> {
     /// Constructor.
     pub fn new() -> Self {
-        AdvancedPath {
+        Self {
             points: IdVec::new(),
             edges: IdVec::new(),
             sub_paths: IdVec::new(),
@@ -59,7 +60,7 @@ impl AdvancedPath {
     }
 
     /// Add a sub-path from a polyline.
-    pub fn add_polygon(&mut self, polygon: Polygon<Point>) -> SubPathId {
+    pub fn add_polygon(&mut self, polygon: Polygon<Point<T>>) -> SubPathId {
         let len = polygon.points.len() as u16;
         let base = self.edges.len();
         let base_vertex = self.points.len();
@@ -84,7 +85,7 @@ impl AdvancedPath {
     }
 
     /// Add a rectangular sub-path.
-    pub fn add_rectangle(&mut self, rectangle: &Rect) -> SubPathId {
+    pub fn add_rectangle(&mut self, rectangle: &Rect<T>) -> SubPathId {
         let min = rectangle.min();
         let max = rectangle.min();
         self.add_polygon(Polygon {
@@ -94,7 +95,7 @@ impl AdvancedPath {
     }
 
     /// Returns an object that can circle around the edges of a sub-path.
-    pub fn sub_path_edges(&self, sp: SubPathId) -> EdgeLoop {
+    pub fn sub_path_edges(&self, sp: SubPathId) -> EdgeLoop<T> {
         let edge = self.sub_paths[sp].first_edge;
         EdgeLoop {
             first: edge,
@@ -105,7 +106,7 @@ impl AdvancedPath {
 
     /// Returns an object that can circle around the edges of a sub-path, starting from
     /// a given edge.
-    pub fn edge_loop(&self, first_edge: EdgeId) -> EdgeLoop {
+    pub fn edge_loop(&self, first_edge: EdgeId) -> EdgeLoop<T> {
         EdgeLoop {
             first: first_edge,
             current: first_edge,
@@ -115,7 +116,7 @@ impl AdvancedPath {
 
     /// Returns an object that can mutably circle around the edges of a sub-path, starting
     /// from a given edge.
-    pub fn mut_edge_loop(&mut self, first_edge: EdgeId) -> MutEdgeLoop {
+    pub fn mut_edge_loop(&mut self, first_edge: EdgeId) -> MutEdgeLoop<T> {
         MutEdgeLoop {
             first: first_edge,
             current: first_edge,
@@ -125,7 +126,7 @@ impl AdvancedPath {
 
     /// Returns an object that can circle around the edge ids of a sub-path, starting from
     /// a given edge.
-    pub fn edge_id_loop(&self, edge_loop: EdgeId) -> EdgeIdLoop {
+    pub fn edge_id_loop(&self, edge_loop: EdgeId) -> EdgeIdLoop<T> {
         EdgeIdLoop {
             path: self,
             current_edge: edge_loop,
@@ -135,7 +136,7 @@ impl AdvancedPath {
     }
 
     /// Returns an object that can circle around the edges ids of a sub-path.
-    pub fn sub_path_edge_id_loop(&self, sub_path: SubPathId) -> EdgeIdLoop {
+    pub fn sub_path_edge_id_loop(&self, sub_path: SubPathId) -> EdgeIdLoop<T> {
         let edge_loop = self.sub_paths[sub_path].first_edge;
         EdgeIdLoop {
             path: self,
@@ -151,7 +152,7 @@ impl AdvancedPath {
     }
 
     /// Returns a slice of all of the vertices.
-    pub fn vertices(&self) -> VertexSlice<Point> {
+    pub fn vertices(&self) -> VertexSlice<Point<T>> {
         self.points.as_slice()
     }
 
@@ -173,7 +174,7 @@ impl AdvancedPath {
     }
 
     /// Returns the vertex positions from the vertex ids in an edge.
-    pub fn edge_segment(&self, edge: Edge) -> Segment {
+    pub fn edge_segment(&self, edge: Edge) -> Segment<T> {
         Segment {
             from: self[edge.from],
             to: self[edge.to],
@@ -182,7 +183,7 @@ impl AdvancedPath {
     }
 
     /// Returns the vertex positions of an edge.
-    pub fn segment(&self, id: EdgeId) -> Segment {
+    pub fn segment(&self, id: EdgeId) -> Segment<T> {
         self.edge_segment(self.edge(id))
     }
 
@@ -197,7 +198,7 @@ impl AdvancedPath {
     }
 
     /// Splits an edge inserting a vertex at a given position.
-    pub fn split_edge(&mut self, edge_id: EdgeId, position: Point) -> EdgeId {
+    pub fn split_edge(&mut self, edge_id: EdgeId, position: Point<T>) -> EdgeId {
         // ------------e1------------->
         // -----e1----> / -----new---->
         let vertex = self.points.push(position);
@@ -301,8 +302,8 @@ impl AdvancedPath {
     /// Invokes a callback on each sub-path for a given selection.
     pub fn for_each_sub_path_id(
         &self,
-        selection: &dyn SubPathSelection,
-        callback: &mut dyn FnMut(&AdvancedPath, SubPathId),
+        selection: &dyn SubPathSelection<T>,
+        callback: &mut dyn FnMut(&AdvancedPath<T>, SubPathId),
     ) {
         for sp in self.sub_path_ids() {
             if selection.sub_path(self, sp) {
@@ -314,8 +315,8 @@ impl AdvancedPath {
     /// Invokes a callback on each edge for a given selection.
     pub fn for_each_edge_id(
         &self,
-        selection: &dyn SubPathSelection,
-        callback: &mut dyn FnMut(&AdvancedPath, SubPathId, EdgeId),
+        selection: &dyn SubPathSelection<T>,
+        callback: &mut dyn FnMut(&AdvancedPath<T>, SubPathId, EdgeId),
     ) {
         for sp in self.sub_path_ids() {
             if selection.sub_path(self, sp) {
@@ -345,7 +346,7 @@ impl AdvancedPath {
 
     /// Creates a path object using `lyon_path`'s default data structure
     /// from a selection of sub-paths.
-    pub fn to_path(&self, selection: &dyn SubPathSelection) -> Path {
+    pub fn to_path(&self, selection: &dyn SubPathSelection<T>) -> Path<T> {
         let mut builder = Path::builder();
         for sp in self.sub_path_ids() {
             if selection.sub_path(self, sp) {
@@ -359,24 +360,24 @@ impl AdvancedPath {
     }
 }
 
-impl ops::Index<VertexId> for AdvancedPath {
-    type Output = Point;
-    fn index(&self, id: VertexId) -> &Point {
+impl<T: Scalar> ops::Index<VertexId> for AdvancedPath<T> {
+    type Output = Point<T>;
+    fn index(&self, id: VertexId) -> &Point<T> {
         &self.points[id]
     }
 }
 
 #[derive(Clone)]
-pub struct EdgeLoop<'l> {
+pub struct EdgeLoop<'l, T: Scalar> {
     current: EdgeId,
     first: EdgeId,
-    path: &'l AdvancedPath,
+    path: &'l AdvancedPath<T>,
 }
 
 // TODO: EdgeLoop should ignore the last edge for a non closed, path or provide
 // the information that it's not a real edge.
 
-impl<'l> EdgeLoop<'l> {
+impl<'l, T: Scalar> EdgeLoop<'l, T> {
     /// Moves to the next edge on this sub-path, returning false when looping
     /// back to the first edge.
     pub fn move_forward(&mut self) -> bool {
@@ -402,7 +403,7 @@ impl<'l> EdgeLoop<'l> {
     }
 
     /// Returns the borrowed path.
-    pub fn path(&self) -> &'l AdvancedPath {
+    pub fn path(&self) -> &'l AdvancedPath<T> {
         self.path
     }
 
@@ -438,12 +439,12 @@ impl<'l> EdgeLoop<'l> {
     }
 
     /// Returns an iterator over the `PathEvent`s of this sub-path.
-    pub fn path_iter(&self) -> SubPathIter {
+    pub fn path_iter(&self) -> SubPathIter<T> {
         let sp = self.path.edges[self.current].sub_path;
         SubPathIter {
             edge_loop: self.clone(),
-            prev: point(0.0, 0.0),
-            first: point(0.0, 0.0),
+            prev: point(T::ZERO, T::ZERO),
+            first: point(T::ZERO, T::ZERO),
             start: true,
             end: false,
             done: false,
@@ -452,13 +453,13 @@ impl<'l> EdgeLoop<'l> {
     }
 }
 
-pub struct MutEdgeLoop<'l> {
+pub struct MutEdgeLoop<'l, T: Scalar> {
     current: EdgeId,
     first: EdgeId,
-    path: &'l mut AdvancedPath,
+    path: &'l mut AdvancedPath<T>,
 }
 
-impl<'l> MutEdgeLoop<'l> {
+impl<'l, T: Scalar> MutEdgeLoop<'l, T> {
     /// Moves to the next edge on this sub-path, returning false when looping
     /// back to the first edge.
     pub fn move_forward(&mut self) -> bool {
@@ -484,7 +485,7 @@ impl<'l> MutEdgeLoop<'l> {
     }
 
     /// Returns the borrowed path.
-    pub fn path(&mut self) -> &mut AdvancedPath {
+    pub fn path(&mut self) -> &mut AdvancedPath<T> {
         self.path
     }
 
@@ -512,14 +513,14 @@ impl<'l> MutEdgeLoop<'l> {
 }
 
 /// Iterates over the edges around a sub-path.
-pub struct EdgeIdLoop<'l> {
-    path: &'l AdvancedPath,
+pub struct EdgeIdLoop<'l, T: Scalar> {
+    path: &'l AdvancedPath<T>,
     current_edge: EdgeId,
     last_edge: EdgeId,
     done: bool,
 }
 
-impl<'l> Iterator for EdgeIdLoop<'l> {
+impl<'l, T: Scalar> Iterator for EdgeIdLoop<'l, T> {
     type Item = EdgeId;
 
     fn next(&mut self) -> Option<EdgeId> {
@@ -535,45 +536,45 @@ impl<'l> Iterator for EdgeIdLoop<'l> {
     }
 }
 
-/// Defines selection of sub-paths in an `AdvancedPath`.
-pub trait SubPathSelection {
-    fn sub_path(&self, path: &AdvancedPath, sub_path: SubPathId) -> bool;
+/// Defines selection of sub-paths in an `AdvancedPath<T>`.
+pub trait SubPathSelection<T: Scalar> {
+    fn sub_path(&self, path: &AdvancedPath<T>, sub_path: SubPathId) -> bool;
 }
 
-/// Selects all sub paths of an `AdvancedPath`.
+/// Selects all sub paths of an `AdvancedPath<T>`.
 pub struct AllSubPaths;
-impl SubPathSelection for AllSubPaths {
-    fn sub_path(&self, _p: &AdvancedPath, _sp: SubPathId) -> bool {
+impl<T: Scalar> SubPathSelection<T> for AllSubPaths {
+    fn sub_path(&self, _p: &AdvancedPath<T>, _sp: SubPathId) -> bool {
         true
     }
 }
 
-impl SubPathSelection for SubPathId {
-    fn sub_path(&self, _p: &AdvancedPath, sp: SubPathId) -> bool {
+impl<T: Scalar> SubPathSelection<T> for SubPathId {
+    fn sub_path(&self, _p: &AdvancedPath<T>, sp: SubPathId) -> bool {
         sp == *self
     }
 }
 
-impl SubPathSelection for SubPathIdRange {
-    fn sub_path(&self, _p: &AdvancedPath, sp: SubPathId) -> bool {
+impl<T: Scalar> SubPathSelection<T> for SubPathIdRange {
+    fn sub_path(&self, _p: &AdvancedPath<T>, sp: SubPathId) -> bool {
         sp.handle >= self.start && sp.handle < self.end
     }
 }
 
-/// An iterator of `PathEvent` for a sub-path of an ~AdvancedPath`
-pub struct SubPathIter<'l> {
-    edge_loop: EdgeLoop<'l>,
-    prev: Point,
-    first: Point,
+/// An iterator of `PathEvent` for a sub-path of an ~AdvancedPath<T>`
+pub struct SubPathIter<'l, T: Scalar> {
+    edge_loop: EdgeLoop<'l, T>,
+    prev: Point<T>,
+    first: Point<T>,
     start: bool,
     end: bool,
     done: bool,
     close: bool,
 }
 
-impl<'l> Iterator for SubPathIter<'l> {
-    type Item = PathEvent;
-    fn next(&mut self) -> Option<PathEvent> {
+impl<'l, T: Scalar> Iterator for SubPathIter<'l, T> {
+    type Item = PathEvent<T>;
+    fn next(&mut self) -> Option<PathEvent<T>> {
         if self.end {
             if self.done {
                 return None;
@@ -615,23 +616,23 @@ pub struct Edge {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub struct Segment {
-    pub from: Point,
-    pub to: Point,
-    pub ctrl: Option<Point>,
+pub struct Segment<T: Scalar> {
+    pub from: Point<T>,
+    pub to: Point<T>,
+    pub ctrl: Option<Point<T>>,
 }
 
-/// A Builder object that can add single sub-path to an `AdvancedPath` through
+/// A Builder object that can add single sub-path to an `AdvancedPath<T>` through
 /// an incremental API similar to the path building interfaces in `lyon_path`.
-pub struct SubPathBuilder<'l> {
-    path: &'l mut AdvancedPath,
+pub struct SubPathBuilder<'l, T: Scalar> {
+    path: &'l mut AdvancedPath<T>,
     sub_path: SubPathId,
     current_edge: EdgeId,
     done: bool,
 }
 
-impl<'l> SubPathBuilder<'l> {
-    pub fn move_to_id(path: &'l mut AdvancedPath, vertex: VertexId) -> Self {
+impl<'l, T: Scalar> SubPathBuilder<'l, T> {
+    pub fn move_to_id(path: &'l mut AdvancedPath<T>, vertex: VertexId) -> Self {
         let sub_path = SubPathId::new(path.sub_paths.len() as u16);
         let current_edge = path.edges.push(EdgeInfo {
             sub_path,
@@ -653,7 +654,7 @@ impl<'l> SubPathBuilder<'l> {
         }
     }
 
-    pub fn move_to(path: &'l mut AdvancedPath, to: Point) -> Self {
+    pub fn move_to(path: &'l mut AdvancedPath<T>, to: Point<T>) -> Self {
         let vertex = path.points.push(to);
         Self::move_to_id(path, vertex)
     }
@@ -671,7 +672,7 @@ impl<'l> SubPathBuilder<'l> {
         self.current_edge
     }
 
-    pub fn line_to(&mut self, to: Point) -> EdgeId {
+    pub fn line_to(&mut self, to: Point<T>) -> EdgeId {
         let vertex = self.path.points.push(to);
         self.line_to_id(vertex)
     }
@@ -697,7 +698,7 @@ impl<'l> SubPathBuilder<'l> {
     }
 }
 
-impl<'l> Drop for SubPathBuilder<'l> {
+impl<'l, T: Scalar> Drop for SubPathBuilder<'l, T> {
     fn drop(&mut self) {
         self.finish(false);
     }
@@ -705,284 +706,314 @@ impl<'l> Drop for SubPathBuilder<'l> {
 
 #[test]
 fn polyline_to_path() {
-    let mut path = AdvancedPath::new();
-    let sp = path.add_polygon(Polygon {
-        points: &[
-            point(0.0, 0.0),
-            point(1.0, 0.0),
-            point(1.0, 1.0),
-            point(0.0, 1.0),
-        ],
-        closed: true,
-    });
+    fn polyline_to_path<T: Scalar>() {
+        let mut path = AdvancedPath::new();
+        let sp = path.add_polygon(Polygon {
+            points: &[
+                point(T::ZERO, T::ZERO),
+                point(T::ONE, T::ZERO),
+                point(T::ONE, T::ONE),
+                point(T::ZERO, T::ONE),
+            ],
+            closed: true,
+        });
 
-    let events: Vec<PathEvent> = path.sub_path_edges(sp).path_iter().collect();
+        let events: Vec<_> = path.sub_path_edges(sp).path_iter().collect();
 
-    assert_eq!(
-        events[0],
-        PathEvent::Begin {
-            at: point(0.0, 0.0)
-        }
-    );
-    assert_eq!(
-        events[1],
-        PathEvent::Line {
-            from: point(0.0, 0.0),
-            to: point(1.0, 0.0)
-        }
-    );
-    assert_eq!(
-        events[2],
-        PathEvent::Line {
-            from: point(1.0, 0.0),
-            to: point(1.0, 1.0)
-        }
-    );
-    assert_eq!(
-        events[3],
-        PathEvent::Line {
-            from: point(1.0, 1.0),
-            to: point(0.0, 1.0)
-        }
-    );
-    assert_eq!(
-        events[4],
-        PathEvent::End {
-            last: point(0.0, 1.0),
-            first: point(0.0, 0.0),
-            close: true
-        }
-    );
-    assert_eq!(events.len(), 5);
+        assert_eq!(
+            events[0],
+            PathEvent::Begin {
+                at: point(T::ZERO, T::ZERO)
+            }
+        );
+        assert_eq!(
+            events[1],
+            PathEvent::Line {
+                from: point(T::ZERO, T::ZERO),
+                to: point(T::ONE, T::ZERO)
+            }
+        );
+        assert_eq!(
+            events[2],
+            PathEvent::Line {
+                from: point(T::ONE, T::ZERO),
+                to: point(T::ONE, T::ONE)
+            }
+        );
+        assert_eq!(
+            events[3],
+            PathEvent::Line {
+                from: point(T::ONE, T::ONE),
+                to: point(T::ZERO, T::ONE)
+            }
+        );
+        assert_eq!(
+            events[4],
+            PathEvent::End {
+                last: point(T::ZERO, T::ONE),
+                first: point(T::ZERO, T::ZERO),
+                close: true
+            }
+        );
+        assert_eq!(events.len(), 5);
+    }
+
+    polyline_to_path::<f32>();
+    polyline_to_path::<f64>();
 }
 
 #[test]
 fn split_edge() {
-    let mut path = AdvancedPath::new();
-    let sp = path.add_polygon(Polygon {
-        points: &[
-            point(0.0, 0.0),
-            point(1.0, 0.0),
-            point(1.0, 1.0),
-            point(0.0, 1.0),
-        ],
-        closed: true,
-    });
+    fn split_edge<T: Scalar>() {
+        let mut path = AdvancedPath::new();
+        let sp = path.add_polygon(Polygon {
+            points: &[
+                point(T::ZERO, T::ZERO),
+                point(T::ONE, T::ZERO),
+                point(T::ONE, T::ONE),
+                point(T::ZERO, T::ONE),
+            ],
+            closed: true,
+        });
 
-    let mut edge_id = None;
-    for id in path.edge_id_loop(path.sub_paths[sp].first_edge) {
-        if path[path.edges[id].vertex] == point(0.0, 0.0) {
-            edge_id = Some(id);
+        let mut edge_id = None;
+        for id in path.edge_id_loop(path.sub_paths[sp].first_edge) {
+            if path[path.edges[id].vertex] == point(T::ZERO, T::ZERO) {
+                edge_id = Some(id);
+            }
         }
+
+        path.split_edge(edge_id.unwrap(), point(T::HALF, T::ZERO));
+
+        let events: Vec<_> = path.sub_path_edges(sp).path_iter().collect();
+        assert_eq!(
+            events[0],
+            PathEvent::Begin {
+                at: point(T::ZERO, T::ZERO)
+            }
+        );
+        assert_eq!(
+            events[1],
+            PathEvent::Line {
+                from: point(T::ZERO, T::ZERO),
+                to: point(T::HALF, T::ZERO)
+            }
+        );
+        assert_eq!(
+            events[2],
+            PathEvent::Line {
+                from: point(T::HALF, T::ZERO),
+                to: point(T::ONE, T::ZERO)
+            }
+        );
+        assert_eq!(
+            events[3],
+            PathEvent::Line {
+                from: point(T::ONE, T::ZERO),
+                to: point(T::ONE, T::ONE)
+            }
+        );
+        assert_eq!(
+            events[4],
+            PathEvent::Line {
+                from: point(T::ONE, T::ONE),
+                to: point(T::ZERO, T::ONE)
+            }
+        );
+        assert_eq!(
+            events[5],
+            PathEvent::End {
+                last: point(T::ZERO, T::ONE),
+                first: point(T::ZERO, T::ZERO),
+                close: true
+            }
+        );
+        assert_eq!(events.len(), 6);
     }
 
-    path.split_edge(edge_id.unwrap(), point(0.5, 0.0));
-
-    let events: Vec<PathEvent> = path.sub_path_edges(sp).path_iter().collect();
-    assert_eq!(
-        events[0],
-        PathEvent::Begin {
-            at: point(0.0, 0.0)
-        }
-    );
-    assert_eq!(
-        events[1],
-        PathEvent::Line {
-            from: point(0.0, 0.0),
-            to: point(0.5, 0.0)
-        }
-    );
-    assert_eq!(
-        events[2],
-        PathEvent::Line {
-            from: point(0.5, 0.0),
-            to: point(1.0, 0.0)
-        }
-    );
-    assert_eq!(
-        events[3],
-        PathEvent::Line {
-            from: point(1.0, 0.0),
-            to: point(1.0, 1.0)
-        }
-    );
-    assert_eq!(
-        events[4],
-        PathEvent::Line {
-            from: point(1.0, 1.0),
-            to: point(0.0, 1.0)
-        }
-    );
-    assert_eq!(
-        events[5],
-        PathEvent::End {
-            last: point(0.0, 1.0),
-            first: point(0.0, 0.0),
-            close: true
-        }
-    );
-    assert_eq!(events.len(), 6);
+    split_edge::<f32>();
+    split_edge::<f64>();
 }
 
 #[test]
 fn sub_path_builder() {
-    let mut path = AdvancedPath::new();
+    fn sub_path_builder<T: Scalar>() {
+        let mut path = AdvancedPath::new();
 
-    {
-        let mut builder = SubPathBuilder::move_to(&mut path, point(0.0, 0.0));
-        builder.line_to(point(1.0, 0.0));
-        builder.line_to(point(1.0, 1.0));
-        builder.line_to(point(0.0, 1.0));
+        {
+            let mut builder = SubPathBuilder::move_to(&mut path, point(T::ZERO, T::ZERO));
+            builder.line_to(point(T::ONE, T::ZERO));
+            builder.line_to(point(T::ONE, T::ONE));
+            builder.line_to(point(T::ZERO, T::ONE));
+        }
+
+        let sp = path.sub_path_ids().start();
+        let events: Vec<_> = path.sub_path_edges(sp).path_iter().collect();
+
+        assert_eq!(
+            events[0],
+            PathEvent::Begin {
+                at: point(T::ZERO, T::ZERO)
+            }
+        );
+        assert_eq!(
+            events[1],
+            PathEvent::Line {
+                from: point(T::ZERO, T::ZERO),
+                to: point(T::ONE, T::ZERO)
+            }
+        );
+        assert_eq!(
+            events[2],
+            PathEvent::Line {
+                from: point(T::ONE, T::ZERO),
+                to: point(T::ONE, T::ONE)
+            }
+        );
+        assert_eq!(
+            events[3],
+            PathEvent::Line {
+                from: point(T::ONE, T::ONE),
+                to: point(T::ZERO, T::ONE)
+            }
+        );
+        assert_eq!(
+            events[4],
+            PathEvent::End {
+                last: point(T::ZERO, T::ONE),
+                first: point(T::ZERO, T::ZERO),
+                close: false
+            }
+        );
+        assert_eq!(events.len(), 5);
     }
 
-    let sp = path.sub_path_ids().start();
-    let events: Vec<PathEvent> = path.sub_path_edges(sp).path_iter().collect();
-
-    assert_eq!(
-        events[0],
-        PathEvent::Begin {
-            at: point(0.0, 0.0)
-        }
-    );
-    assert_eq!(
-        events[1],
-        PathEvent::Line {
-            from: point(0.0, 0.0),
-            to: point(1.0, 0.0)
-        }
-    );
-    assert_eq!(
-        events[2],
-        PathEvent::Line {
-            from: point(1.0, 0.0),
-            to: point(1.0, 1.0)
-        }
-    );
-    assert_eq!(
-        events[3],
-        PathEvent::Line {
-            from: point(1.0, 1.0),
-            to: point(0.0, 1.0)
-        }
-    );
-    assert_eq!(
-        events[4],
-        PathEvent::End {
-            last: point(0.0, 1.0),
-            first: point(0.0, 0.0),
-            close: false
-        }
-    );
-    assert_eq!(events.len(), 5);
+    sub_path_builder::<f32>();
+    sub_path_builder::<f64>();
 }
 
 #[test]
 fn empty_sub_path_1() {
-    let mut path = AdvancedPath::new();
+    fn empty_sub_path_1<T: Scalar>() {
+        let mut path = AdvancedPath::new();
 
-    {
-        SubPathBuilder::move_to(&mut path, point(0.0, 0.0));
+        {
+            SubPathBuilder::move_to(&mut path, point(T::ZERO, T::ZERO));
+        }
+
+        let sp = path.sub_path_ids().start();
+        let events: Vec<_> = path.sub_path_edges(sp).path_iter().collect();
+
+        assert_eq!(
+            events[0],
+            PathEvent::Begin {
+                at: point(T::ZERO, T::ZERO)
+            }
+        );
+        assert_eq!(
+            events[1],
+            PathEvent::End {
+                last: point(T::ZERO, T::ZERO),
+                first: point(T::ZERO, T::ZERO),
+                close: false
+            }
+        );
+        assert_eq!(events.len(), 2);
     }
 
-    let sp = path.sub_path_ids().start();
-    let events: Vec<PathEvent> = path.sub_path_edges(sp).path_iter().collect();
-
-    assert_eq!(
-        events[0],
-        PathEvent::Begin {
-            at: point(0.0, 0.0)
-        }
-    );
-    assert_eq!(
-        events[1],
-        PathEvent::End {
-            last: point(0.0, 0.0),
-            first: point(0.0, 0.0),
-            close: false
-        }
-    );
-    assert_eq!(events.len(), 2);
+    empty_sub_path_1::<f32>();
+    empty_sub_path_1::<f64>();
 }
 
 #[test]
 fn empty_sub_path_2() {
-    let mut path = AdvancedPath::new();
-    path.add_polygon(Polygon {
-        points: &[point(0.0, 0.0)],
-        closed: false,
-    });
+    fn empty_sub_path_2<T: Scalar>() {
+        let mut path = AdvancedPath::new();
+        path.add_polygon(Polygon {
+            points: &[point(T::ZERO, T::ZERO)],
+            closed: false,
+        });
 
-    let sp = path.sub_path_ids().start();
-    let events: Vec<PathEvent> = path.sub_path_edges(sp).path_iter().collect();
+        let sp = path.sub_path_ids().start();
+        let events: Vec<_> = path.sub_path_edges(sp).path_iter().collect();
 
-    assert_eq!(
-        events[0],
-        PathEvent::Begin {
-            at: point(0.0, 0.0)
-        }
-    );
-    assert_eq!(
-        events[1],
-        PathEvent::End {
-            last: point(0.0, 0.0),
-            first: point(0.0, 0.0),
-            close: false
-        }
-    );
-    assert_eq!(events.len(), 2);
+        assert_eq!(
+            events[0],
+            PathEvent::Begin {
+                at: point(T::ZERO, T::ZERO)
+            }
+        );
+        assert_eq!(
+            events[1],
+            PathEvent::End {
+                last: point(T::ZERO, T::ZERO),
+                first: point(T::ZERO, T::ZERO),
+                close: false
+            }
+        );
+        assert_eq!(events.len(), 2);
+    }
+
+    empty_sub_path_2::<f32>();
+    empty_sub_path_2::<f64>();
 }
 
 #[test]
 fn invert_sub_path() {
-    let mut path = AdvancedPath::new();
-    let sp = path.add_polygon(Polygon {
-        points: &[
-            point(0.0, 0.0),
-            point(1.0, 0.0),
-            point(1.0, 1.0),
-            point(0.0, 1.0),
-        ],
-        closed: false,
-    });
+    fn invert_sub_path<T: Scalar>() {
+        let mut path = AdvancedPath::new();
+        let sp = path.add_polygon(Polygon {
+            points: &[
+                point(T::ZERO, T::ZERO),
+                point(T::ONE, T::ZERO),
+                point(T::ONE, T::ONE),
+                point(T::ZERO, T::ONE),
+            ],
+            closed: false,
+        });
 
-    path.invert_sub_path(sp);
+        path.invert_sub_path(sp);
 
-    let events: Vec<PathEvent> = path.sub_path_edges(sp).path_iter().collect();
+        let events: Vec<_> = path.sub_path_edges(sp).path_iter().collect();
 
-    assert_eq!(
-        events[0],
-        PathEvent::Begin {
-            at: point(0.0, 1.0)
-        }
-    );
-    assert_eq!(
-        events[1],
-        PathEvent::Line {
-            from: point(0.0, 1.0),
-            to: point(1.0, 1.0)
-        }
-    );
-    assert_eq!(
-        events[2],
-        PathEvent::Line {
-            from: point(1.0, 1.0),
-            to: point(1.0, 0.0)
-        }
-    );
-    assert_eq!(
-        events[3],
-        PathEvent::Line {
-            from: point(1.0, 0.0),
-            to: point(0.0, 0.0)
-        }
-    );
-    assert_eq!(
-        events[4],
-        PathEvent::End {
-            last: point(0.0, 0.0),
-            first: point(0.0, 1.0),
-            close: false
-        }
-    );
-    assert_eq!(events.len(), 5);
+        assert_eq!(
+            events[0],
+            PathEvent::Begin {
+                at: point(T::ZERO, T::ONE)
+            }
+        );
+        assert_eq!(
+            events[1],
+            PathEvent::Line {
+                from: point(T::ZERO, T::ONE),
+                to: point(T::ONE, T::ONE)
+            }
+        );
+        assert_eq!(
+            events[2],
+            PathEvent::Line {
+                from: point(T::ONE, T::ONE),
+                to: point(T::ONE, T::ZERO)
+            }
+        );
+        assert_eq!(
+            events[3],
+            PathEvent::Line {
+                from: point(T::ONE, T::ZERO),
+                to: point(T::ZERO, T::ZERO)
+            }
+        );
+        assert_eq!(
+            events[4],
+            PathEvent::End {
+                last: point(T::ZERO, T::ZERO),
+                first: point(T::ZERO, T::ONE),
+                close: false
+            }
+        );
+        assert_eq!(events.len(), 5);
+    }
+
+    invert_sub_path::<f32>();
+    invert_sub_path::<f64>();
 }

@@ -93,6 +93,8 @@ pub use crate::tessellation::FillOptions;
 pub use crate::tessellator::FillTessellator;
 
 pub mod geometry_builder {
+    use tessellation::geom::Scalar;
+
     use crate::math::Point;
     pub use crate::tessellation::geometry_builder::{NoOutput, Positions, VertexBuffers};
     pub use crate::tessellation::VertexId;
@@ -102,26 +104,26 @@ pub mod geometry_builder {
     ///
     /// This is primarily intended for efficient interaction with the libtess2 tessellator
     /// from the `lyon_tess2` crate.
-    pub trait GeometryReceiver {
-        fn set_geometry(&mut self, vertices: &[Point], indices: &[u32]);
+    pub trait GeometryReceiver<T:Scalar> {
+        fn set_geometry(&mut self, vertices: &[Point<T>], indices: &[u32]);
     }
 
     /// A trait specifying how to create vertex values.
-    pub trait BasicVertexConstructor<OutputVertex> {
-        fn new_vertex(&mut self, point: Point) -> OutputVertex;
+    pub trait BasicVertexConstructor<T:Scalar,OutputVertex> {
+        fn new_vertex(&mut self, point: Point<T>) -> OutputVertex;
     }
 
-    impl BasicVertexConstructor<Point> for Positions {
-        fn new_vertex(&mut self, position: Point) -> Point {
+    impl<T:Scalar> BasicVertexConstructor<T,Point<T>> for Positions {
+        fn new_vertex(&mut self, position: Point<T>) -> Point<T> {
             position
         }
     }
 
-    impl<F, OutputVertex> BasicVertexConstructor<OutputVertex> for F
+    impl<T:Scalar,F, OutputVertex> BasicVertexConstructor<T,OutputVertex> for F
     where
-        F: Fn(Point) -> OutputVertex,
+        F: Fn(Point<T>) -> OutputVertex,
     {
-        fn new_vertex(&mut self, position: Point) -> OutputVertex {
+        fn new_vertex(&mut self, position: Point<T>) -> OutputVertex {
             self(position)
         }
     }
@@ -146,13 +148,13 @@ pub mod geometry_builder {
         }
     }
 
-    impl<'l, OutputVertex, OutputIndex, Ctor> GeometryReceiver
+    impl<'l,T:Scalar, OutputVertex, OutputIndex, Ctor> GeometryReceiver<T>
         for BuffersBuilder<'l, OutputVertex, OutputIndex, Ctor>
     where
         OutputIndex: From<VertexId>,
-        Ctor: BasicVertexConstructor<OutputVertex>,
+        Ctor: BasicVertexConstructor<T,OutputVertex>,
     {
-        fn set_geometry(&mut self, vertices: &[Point], indices: &[u32]) {
+        fn set_geometry(&mut self, vertices: &[Point<T>], indices: &[u32]) {
             for v in vertices {
                 let vertex = self.vertex_constructor.new_vertex(*v);
                 self.buffers.vertices.push(vertex);
@@ -163,7 +165,7 @@ pub mod geometry_builder {
         }
     }
 
-    impl GeometryReceiver for NoOutput {
-        fn set_geometry(&mut self, _vertices: &[Point], _indices: &[u32]) {}
+    impl <T:Scalar>GeometryReceiver <T>for NoOutput {
+        fn set_geometry(&mut self, _vertices: &[Point<T>], _indices: &[u32]) {}
     }
 }

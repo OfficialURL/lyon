@@ -39,6 +39,7 @@
 //! ```
 //!
 
+use geom::Scalar;
 pub use lyon_geom as geom;
 
 #[cfg(feature = "serialization")]
@@ -81,41 +82,43 @@ pub mod traits {
 }
 
 pub mod math {
-    //! f32 version of the lyon_geom types used everywhere. Most other lyon crates
+    //! Floating point version of the lyon_geom types used everywhere. Most other lyon crates
     //! reexport them.
+
+    use lyon_geom::Scalar;
 
     use crate::geom::euclid;
 
-    /// Alias for ```euclid::default::Point2D<f32>```.
-    pub type Point = euclid::default::Point2D<f32>;
+    /// Alias for ```euclid::default::Point2D<T>```.
+    pub type Point<T> = euclid::default::Point2D<T>;
 
-    /// Alias for ```euclid::default::Point2D<f32>```.
-    pub type Vector = euclid::default::Vector2D<f32>;
+    /// Alias for ```euclid::default::Point2D<T>```.
+    pub type Vector<T> = euclid::default::Vector2D<T>;
 
-    /// Alias for ```euclid::default::Size2D<f32>```.
-    pub type Size = euclid::default::Size2D<f32>;
+    /// Alias for ```euclid::default::Size2D<T>```.
+    pub type Size<T> = euclid::default::Size2D<T>;
 
-    /// Alias for ```euclid::default::Rect<f32>```
-    pub type Rect = euclid::default::Rect<f32>;
+    /// Alias for ```euclid::default::Rect<T>```
+    pub type Rect<T> = euclid::default::Rect<T>;
 
-    /// Alias for ```euclid::default::Transform2D<f32>```
-    pub type Transform = euclid::default::Transform2D<f32>;
+    /// Alias for ```euclid::default::Transform2D<T>```
+    pub type Transform<T> = euclid::default::Transform2D<T>;
 
-    /// Alias for ```euclid::default::Rotation2D<f32>```
-    pub type Rotation = euclid::default::Rotation2D<f32>;
+    /// Alias for ```euclid::default::Rotation2D<T>```
+    pub type Rotation<T> = euclid::default::Rotation2D<T>;
 
-    /// Alias for ```euclid::default::Translation2D<f32>```
-    pub type Translation = euclid::Translation2D<f32, euclid::UnknownUnit, euclid::UnknownUnit>;
+    /// Alias for ```euclid::default::Translation2D<T>```
+    pub type Translation<T> = euclid::Translation2D<T, euclid::UnknownUnit, euclid::UnknownUnit>;
 
-    /// Alias for ```euclid::default::Scale<f32>```
-    pub type Scale = euclid::default::Scale<f32>;
+    /// Alias for ```euclid::default::Scale<T>```
+    pub type Scale<T> = euclid::default::Scale<T>;
 
-    /// An angle in radians (f32).
-    pub type Angle = euclid::Angle<f32>;
+    /// An angle in radians (T).
+    pub type Angle<T> = euclid::Angle<T>;
 
     /// Shorthand for `Rect::new(Point::new(x, y), Size::new(w, h))`.
     #[inline]
-    pub fn rect(x: f32, y: f32, w: f32, h: f32) -> Rect {
+    pub fn rect<T: Scalar>(x: T, y: T, w: T, h: T) -> Rect<T> {
         Rect {
             origin: point(x, y),
             size: size(w, h),
@@ -124,19 +127,19 @@ pub mod math {
 
     /// Shorthand for `Vector::new(x, y)`.
     #[inline]
-    pub fn vector(x: f32, y: f32) -> Vector {
+    pub fn vector<T: Scalar>(x: T, y: T) -> Vector<T> {
         Vector::new(x, y)
     }
 
     /// Shorthand for `Point::new(x, y)`.
     #[inline]
-    pub fn point(x: f32, y: f32) -> Point {
+    pub fn point<T: Scalar>(x: T, y: T) -> Point<T> {
         Point::new(x, y)
     }
 
     /// Shorthand for `Size::new(x, y)`.
     #[inline]
-    pub fn size(w: f32, h: f32) -> Size {
+    pub fn size<T: Scalar>(w: T, h: T) -> Size<T> {
         Size::new(w, h)
     }
 }
@@ -237,30 +240,30 @@ impl EventId {
 
 /// Interface for types types (typically endpoints and control points) that have
 /// a 2D position.
-pub trait Position {
-    fn position(&self) -> Point;
+pub trait Position<T: Scalar> {
+    fn position(&self) -> Point<T>;
 }
 
-impl<U> Position for crate::geom::euclid::Point2D<f32, U> {
-    fn position(&self) -> Point {
+impl<T: Scalar, U> Position<T> for crate::geom::euclid::Point2D<T, U> {
+    fn position(&self) -> Point<T> {
         self.to_untyped()
     }
 }
 
-impl<'l, T: Position> Position for &'l T {
-    fn position(&self) -> Point {
+impl<'l, T: Scalar, U: Position<T>> Position<T> for &'l U {
+    fn position(&self) -> Point<T> {
         (*self).position()
     }
 }
 
-impl Position for (f32, f32) {
-    fn position(&self) -> Point {
+impl<T: Scalar> Position<T> for (T, T) {
+    fn position(&self) -> Point<T> {
         Point::new(self.0, self.1)
     }
 }
 
-impl Position for [f32; 2] {
-    fn position(&self) -> Point {
+impl<T: Scalar> Position<T> for [T; 2] {
+    fn position(&self) -> Point<T> {
         Point::new(self[0], self[1])
     }
 }
@@ -269,16 +272,16 @@ impl Position for [f32; 2] {
 ///
 /// This interface can be implemented by path objects themselves or via external
 /// data structures.
-pub trait PositionStore {
-    fn get_endpoint(&self, id: EndpointId) -> Point;
-    fn get_control_point(&self, id: ControlPointId) -> Point;
+pub trait PositionStore<T: Scalar> {
+    fn get_endpoint(&self, id: EndpointId) -> Point<T>;
+    fn get_control_point(&self, id: ControlPointId) -> Point<T>;
 }
 
-impl<'l> PositionStore for (&'l [Point], &'l [Point]) {
-    fn get_endpoint(&self, id: EndpointId) -> Point {
+impl<'l, T: Scalar> PositionStore<T> for (&'l [Point<T>], &'l [Point<T>]) {
+    fn get_endpoint(&self, id: EndpointId) -> Point<T> {
         self.0[id.to_usize()]
     }
-    fn get_control_point(&self, id: ControlPointId) -> Point {
+    fn get_control_point(&self, id: ControlPointId) -> Point<T> {
         self.1[id.to_usize()]
     }
 }
@@ -287,11 +290,11 @@ impl<'l> PositionStore for (&'l [Point], &'l [Point]) {
 ///
 /// This interface can be implemented by path objects themselves or via external
 /// data structures.
-pub trait AttributeStore {
+pub trait AttributeStore<T: Scalar> {
     /// Returns the endpoint's custom attributes as a slice of 32 bits floats.
     ///
     /// The size of the slice must be equal to the result of `num_attributes()`.
-    fn get(&self, id: EndpointId) -> &[f32];
+    fn get(&self, id: EndpointId) -> &[T];
 
     /// Returns the number of float attributes per endpoint.
     ///
@@ -299,23 +302,23 @@ pub trait AttributeStore {
     fn num_attributes(&self) -> usize;
 }
 
-impl AttributeStore for () {
+impl<T: Scalar> AttributeStore<T> for () {
     fn num_attributes(&self) -> usize {
         0
     }
-    fn get(&self, _: EndpointId) -> &[f32] {
+    fn get(&self, _: EndpointId) -> &[T] {
         &[]
     }
 }
 
 /// A view over a contiguous storage of custom attributes.
-pub struct AttributeSlice<'l> {
-    data: &'l [f32],
+pub struct AttributeSlice<'l, T: Scalar> {
+    data: &'l [T],
     stride: usize,
 }
 
-impl<'l> AttributeSlice<'l> {
-    pub fn new(data: &'l [f32], num_attributes: usize) -> Self {
+impl<'l, T: Scalar> AttributeSlice<'l, T> {
+    pub fn new(data: &'l [T], num_attributes: usize) -> Self {
         AttributeSlice {
             data,
             stride: num_attributes,
@@ -323,8 +326,8 @@ impl<'l> AttributeSlice<'l> {
     }
 }
 
-impl<'l> AttributeStore for AttributeSlice<'l> {
-    fn get(&self, id: EndpointId) -> &[f32] {
+impl<'l, T: Scalar> AttributeStore<T> for AttributeSlice<'l, T> {
+    fn get(&self, id: EndpointId) -> &[T] {
         let start = id.to_usize() * self.stride;
         let end = start + self.stride;
         &self.data[start..end]

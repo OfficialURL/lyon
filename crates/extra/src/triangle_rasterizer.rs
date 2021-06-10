@@ -1,3 +1,4 @@
+use path::geom::Scalar;
 use std::cmp::{max, min};
 use std::ops::Add;
 
@@ -40,7 +41,7 @@ impl Add for IntVec4 {
 ///
 /// The rasterizer processes pixels by block of 4 and hands blocks containing at
 /// least one affected pixel to the ShadingStage.
-pub fn rasterize_triangles<Constants, Vertex: VertexData, Target>(
+pub fn rasterize_triangles<T: Scalar, Constants, Vertex: VertexData<T>, Target>(
     vertices: &[Vertex],
     indices: &[u16],
     constants: &Constants,
@@ -206,9 +207,9 @@ pub trait PixelShader<Pixel, Vertex, Constants> {
 }
 
 // Vertices must implement this trait
-pub trait VertexData {
-    fn interpolate(v1: &Self, v2: &Self, v3: &Self, w1: f32, w2: f32, w3: f32) -> Self;
-    fn position(&self) -> Vector;
+pub trait VertexData<T: Scalar> {
+    fn interpolate(v1: &Self, v2: &Self, v3: &Self, w1: T, w2: T, w3: T) -> Self;
+    fn position(&self) -> Vector<T>;
 }
 
 /// A simple shader that returns the interpolated vertex color.
@@ -238,13 +239,13 @@ impl<Pixel, Vertex, Constants: GetColor<Pixel>> PixelShader<Pixel, Vertex, Const
     }
 }
 
-impl VertexData for Vector {
-    fn interpolate(a: &Vector, b: &Vector, c: &Vector, wa: f32, wb: f32, wc: f32) -> Vector {
-        let inv_w = 1.0 / (wa + wb + wc);
+impl<T: Scalar> VertexData<T> for Vector<T> {
+    fn interpolate(a: &Vector<T>, b: &Vector<T>, c: &Vector<T>, wa: T, wb: T, wc: T) -> Vector<T> {
+        let inv_w = T::ONE / (wa + wb + wc);
         return (*a * wa + *b * wb + *c * wc) * inv_w;
     }
 
-    fn position(&self) -> Vector {
+    fn position(&self) -> Vector<T> {
         *self
     }
 }

@@ -11,63 +11,63 @@ use std::ops::Range;
 /// A linear segment.
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
-pub struct LineSegment<S> {
-    pub from: Point<S>,
-    pub to: Point<S>,
+pub struct LineSegment<T> {
+    pub from: Point<T>,
+    pub to: Point<T>,
 }
 
-impl<S: Scalar> LineSegment<S> {
+impl<T: Scalar> LineSegment<T> {
     /// Sample the segment at t (expecting t between 0 and 1).
     #[inline]
-    pub fn sample(&self, t: S) -> Point<S> {
+    pub fn sample(&self, t: T) -> Point<T> {
         self.from.lerp(self.to, t)
     }
 
     /// Sample the x coordinate of the segment at t (expecting t between 0 and 1).
     #[inline]
-    pub fn x(&self, t: S) -> S {
-        self.from.x * (S::ONE - t) + self.to.x * t
+    pub fn x(&self, t: T) -> T {
+        self.from.x * (T::ONE - t) + self.to.x * t
     }
 
     /// Sample the y coordinate of the segment at t (expecting t between 0 and 1).
     #[inline]
-    pub fn y(&self, t: S) -> S {
-        self.from.y * (S::ONE - t) + self.to.y * t
+    pub fn y(&self, t: T) -> T {
+        self.from.y * (T::ONE - t) + self.to.y * t
     }
 
     #[inline]
-    pub fn from(&self) -> Point<S> {
+    pub fn from(&self) -> Point<T> {
         self.from
     }
 
     #[inline]
-    pub fn to(&self) -> Point<S> {
+    pub fn to(&self) -> Point<T> {
         self.to
     }
 
-    pub fn solve_t_for_x(&self, x: S) -> S {
+    pub fn solve_t_for_x(&self, x: T) -> T {
         let dx = self.to.x - self.from.x;
-        if dx == S::ZERO {
-            return S::ZERO;
+        if dx == T::ZERO {
+            return T::ZERO;
         }
 
         (x - self.from.x) / dx
     }
 
-    pub fn solve_t_for_y(&self, y: S) -> S {
+    pub fn solve_t_for_y(&self, y: T) -> T {
         let dy = self.to.y - self.from.y;
-        if dy == S::ZERO {
-            return S::ZERO;
+        if dy == T::ZERO {
+            return T::ZERO;
         }
 
         (y - self.from.y) / dy
     }
 
-    pub fn solve_y_for_x(&self, x: S) -> S {
+    pub fn solve_y_for_x(&self, x: T) -> T {
         self.y(self.solve_t_for_x(x))
     }
 
-    pub fn solve_x_for_y(&self, y: S) -> S {
+    pub fn solve_x_for_y(&self, y: T) -> T {
         self.x(self.solve_t_for_y(y))
     }
 
@@ -84,7 +84,7 @@ impl<S: Scalar> LineSegment<S> {
     /// Return the sub-segment inside a given range of t.
     ///
     /// This is equivalent splitting at the range's end points.
-    pub fn split_range(&self, t_range: Range<S>) -> Self {
+    pub fn split_range(&self, t_range: Range<T>) -> Self {
         LineSegment {
             from: self.from.lerp(self.to, t_range.start),
             to: self.from.lerp(self.to, t_range.end),
@@ -93,7 +93,7 @@ impl<S: Scalar> LineSegment<S> {
 
     /// Split this curve into two sub-segments.
     #[inline]
-    pub fn split(&self, t: S) -> (Self, Self) {
+    pub fn split(&self, t: T) -> (Self, Self) {
         let split_point = self.sample(t);
 
         (
@@ -110,7 +110,7 @@ impl<S: Scalar> LineSegment<S> {
 
     /// Return the segment before the split point.
     #[inline]
-    pub fn before_split(&self, t: S) -> Self {
+    pub fn before_split(&self, t: T) -> Self {
         LineSegment {
             from: self.from,
             to: self.sample(t),
@@ -119,20 +119,20 @@ impl<S: Scalar> LineSegment<S> {
 
     /// Return the segment after the split point.
     #[inline]
-    pub fn after_split(&self, t: S) -> Self {
+    pub fn after_split(&self, t: T) -> Self {
         LineSegment {
             from: self.sample(t),
             to: self.to,
         }
     }
 
-    pub fn split_at_x(&self, x: S) -> (Self, Self) {
+    pub fn split_at_x(&self, x: T) -> (Self, Self) {
         self.split(self.solve_t_for_x(x))
     }
 
     /// Return the minimum bounding rectangle
     #[inline]
-    pub fn bounding_rect(&self) -> Rect<S> {
+    pub fn bounding_rect(&self) -> Rect<T> {
         let (min_x, max_x) = self.bounding_range_x();
         let (min_y, max_y) = self.bounding_range_y();
 
@@ -142,24 +142,24 @@ impl<S: Scalar> LineSegment<S> {
     }
 
     #[inline]
-    fn bounding_range_x(&self) -> (S, S) {
+    fn bounding_range_x(&self) -> (T, T) {
         min_max(self.from.x, self.to.x)
     }
 
     #[inline]
-    fn bounding_range_y(&self) -> (S, S) {
+    fn bounding_range_y(&self) -> (T, T) {
         min_max(self.from.y, self.to.y)
     }
 
     /// Returns the vector between this segment's `from` and `to` points.
     #[inline]
-    pub fn to_vector(&self) -> Vector<S> {
+    pub fn to_vector(&self) -> Vector<T> {
         self.to - self.from
     }
 
     /// Returns the line containing this segment.
     #[inline]
-    pub fn to_line(&self) -> Line<S> {
+    pub fn to_line(&self) -> Line<T> {
         Line {
             point: self.from,
             vector: self.to - self.from,
@@ -168,19 +168,19 @@ impl<S: Scalar> LineSegment<S> {
 
     /// Computes the length of this segment.
     #[inline]
-    pub fn length(&self) -> S {
+    pub fn length(&self) -> T {
         self.to_vector().length()
     }
 
     /// Changes the segment's length, moving destination point.
-    pub fn set_length(&mut self, new_length: S) {
+    pub fn set_length(&mut self, new_length: T) {
         let v = self.to_vector();
         let old_length = v.length();
         self.to = self.from + v * (new_length / old_length);
     }
 
     #[inline]
-    pub fn translate(&mut self, by: Vector<S>) -> Self {
+    pub fn translate(&mut self, by: Vector<T>) -> Self {
         LineSegment {
             from: self.from + by,
             to: self.to + by,
@@ -189,7 +189,7 @@ impl<S: Scalar> LineSegment<S> {
 
     /// Applies the transform to this segment and returns the results.
     #[inline]
-    pub fn transformed<T: Transformation<S>>(&self, transform: &T) -> Self {
+    pub fn transformed<U: Transformation<T>>(&self, transform: &U) -> Self {
         LineSegment {
             from: transform.transform_point(self.from),
             to: transform.transform_point(self.to),
@@ -201,7 +201,7 @@ impl<S: Scalar> LineSegment<S> {
     /// The result is provided in the form of the `t` parameter of each
     /// segment. To get the intersection point, sample one of the segments
     /// at the corresponding value.
-    pub fn intersection_t(&self, other: &Self) -> Option<(S, S)> {
+    pub fn intersection_t(&self, other: &Self) -> Option<(T, T)> {
         if self.to == other.to
             || self.from == other.from
             || self.from == other.to
@@ -215,13 +215,13 @@ impl<S: Scalar> LineSegment<S> {
 
         let v1_cross_v2 = v1.cross(v2);
 
-        if v1_cross_v2 == S::ZERO {
+        if v1_cross_v2 == T::ZERO {
             // The segments are parallel
             return None;
         }
 
-        let sign_v1_cross_v2 = S::signum(v1_cross_v2);
-        let abs_v1_cross_v2 = S::abs(v1_cross_v2);
+        let sign_v1_cross_v2 = T::signum(v1_cross_v2);
+        let abs_v1_cross_v2 = T::abs(v1_cross_v2);
 
         let v3 = other.from - self.from;
 
@@ -231,7 +231,7 @@ impl<S: Scalar> LineSegment<S> {
         let t = v3.cross(v2) * sign_v1_cross_v2;
         let u = v3.cross(v1) * sign_v1_cross_v2;
 
-        if t < S::ZERO || t > abs_v1_cross_v2 || u < S::ZERO || u > abs_v1_cross_v2 {
+        if t < T::ZERO || t > abs_v1_cross_v2 || u < T::ZERO || u > abs_v1_cross_v2 {
             return None;
         }
 
@@ -239,28 +239,28 @@ impl<S: Scalar> LineSegment<S> {
     }
 
     #[inline]
-    pub fn intersection(&self, other: &Self) -> Option<Point<S>> {
+    pub fn intersection(&self, other: &Self) -> Option<Point<T>> {
         self.intersection_t(other).map(|(t, _)| self.sample(t))
     }
 
-    pub fn line_intersection_t(&self, line: &Line<S>) -> Option<S> {
+    pub fn line_intersection_t(&self, line: &Line<T>) -> Option<T> {
         let v1 = self.to_vector();
         let v2 = line.vector;
 
         let v1_cross_v2 = v1.cross(v2);
 
-        if v1_cross_v2 == S::ZERO {
+        if v1_cross_v2 == T::ZERO {
             // The segments are parallel
             return None;
         }
 
-        let sign_v1_cross_v2 = S::signum(v1_cross_v2);
-        let abs_v1_cross_v2 = S::abs(v1_cross_v2);
+        let sign_v1_cross_v2 = T::signum(v1_cross_v2);
+        let abs_v1_cross_v2 = T::abs(v1_cross_v2);
 
         let v3 = line.point - self.from;
         let t = v3.cross(v2) * sign_v1_cross_v2;
 
-        if t < S::ZERO || t > abs_v1_cross_v2 {
+        if t < T::ZERO || t > abs_v1_cross_v2 {
             return None;
         }
 
@@ -268,31 +268,31 @@ impl<S: Scalar> LineSegment<S> {
     }
 
     #[inline]
-    pub fn line_intersection(&self, line: &Line<S>) -> Option<Point<S>> {
+    pub fn line_intersection(&self, line: &Line<T>) -> Option<Point<T>> {
         self.line_intersection_t(line).map(|t| self.sample(t))
     }
 
     // TODO: Consider only intersecting in the [0, 1[ range instead of [0, 1]
-    pub fn horizontal_line_intersection_t(&self, y: S) -> Option<S> {
+    pub fn horizontal_line_intersection_t(&self, y: T) -> Option<T> {
         Self::axis_aligned_intersection_1d(self.from.y, self.to.y, y)
     }
 
-    pub fn vertical_line_intersection_t(&self, x: S) -> Option<S> {
+    pub fn vertical_line_intersection_t(&self, x: T) -> Option<T> {
         Self::axis_aligned_intersection_1d(self.from.x, self.to.x, x)
     }
 
     #[inline]
-    pub fn horizontal_line_intersection(&self, y: S) -> Option<Point<S>> {
+    pub fn horizontal_line_intersection(&self, y: T) -> Option<Point<T>> {
         self.horizontal_line_intersection_t(y)
             .map(|t| self.sample(t))
     }
 
     #[inline]
-    pub fn vertical_line_intersection(&self, x: S) -> Option<Point<S>> {
+    pub fn vertical_line_intersection(&self, x: T) -> Option<Point<T>> {
         self.vertical_line_intersection_t(x).map(|t| self.sample(t))
     }
 
-    fn axis_aligned_intersection_1d(mut a: S, mut b: S, v: S) -> Option<S> {
+    fn axis_aligned_intersection_1d(mut a: T, mut b: T, v: T) -> Option<T> {
         // TODO: is it really useful to swap?
         let swap = a > b;
         if swap {
@@ -300,17 +300,17 @@ impl<S: Scalar> LineSegment<S> {
         }
 
         let d = b - a;
-        if d == S::ZERO {
+        if d == T::ZERO {
             return None;
         }
 
         let t = (v - a) / d;
 
-        if t < S::ZERO || t > S::ONE {
+        if t < T::ZERO || t > T::ONE {
             return None;
         }
 
-        Some(if swap { S::ONE - t } else { t })
+        Some(if swap { T::ONE - t } else { t })
     }
 
     #[inline]
@@ -319,19 +319,19 @@ impl<S: Scalar> LineSegment<S> {
     }
 
     #[inline]
-    pub fn intersects_line(&self, line: &Line<S>) -> bool {
+    pub fn intersects_line(&self, line: &Line<T>) -> bool {
         self.line_intersection_t(line).is_some()
     }
 
-    pub fn overlaps_line(&self, line: &Line<S>) -> bool {
+    pub fn overlaps_line(&self, line: &Line<T>) -> bool {
         let v1 = self.to_vector();
         let v2 = line.vector;
         let v3 = line.point - self.from;
 
-        v1.cross(v2) == S::ZERO && v1.cross(v3) == S::ZERO
+        v1.cross(v2) == T::ZERO && v1.cross(v3) == T::ZERO
     }
 
-    pub fn overlaps_segment(&self, other: &LineSegment<S>) -> bool {
+    pub fn overlaps_segment(&self, other: &LineSegment<T>) -> bool {
         if !self.overlaps_line(&other.to_line()) {
             return false;
         }
@@ -339,7 +339,7 @@ impl<S: Scalar> LineSegment<S> {
         let v1 = self.to - self.from;
         let v2 = other.from - self.from;
         let v3 = other.to - self.from;
-        let mut a = S::ZERO;
+        let mut a = T::ZERO;
         let mut b = v1.dot(v1);
         let mut c = v1.dot(v2);
         let mut d = v1.dot(v3);
@@ -358,7 +358,7 @@ impl<S: Scalar> LineSegment<S> {
             || (a == c && b == d)
     }
 
-    pub fn contains_segment(&self, other: &LineSegment<S>) -> bool {
+    pub fn contains_segment(&self, other: &LineSegment<T>) -> bool {
         if !self.overlaps_line(&other.to_line()) {
             return false;
         }
@@ -366,7 +366,7 @@ impl<S: Scalar> LineSegment<S> {
         let v1 = self.to - self.from;
         let v2 = other.from - self.from;
         let v3 = other.to - self.from;
-        let mut a = S::ZERO;
+        let mut a = T::ZERO;
         let mut b = v1.dot(v1);
         let mut c = v1.dot(v2);
         let mut d = v1.dot(v3);

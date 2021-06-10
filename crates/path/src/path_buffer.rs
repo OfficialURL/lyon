@@ -1,5 +1,8 @@
 //! A container to store multiple paths contiguously.
 
+
+use lyon_geom::Scalar;
+
 use crate::builder::*;
 use crate::math::*;
 use crate::path;
@@ -17,13 +20,13 @@ struct PathDescriptor {
 
 /// An object that stores multiple paths contiguously.
 #[derive(Clone)]
-pub struct PathBuffer {
-    points: Vec<Point>,
+pub struct PathBuffer<T: Scalar> {
+    points: Vec<Point<T>>,
     verbs: Vec<path::Verb>,
     paths: Vec<PathDescriptor>,
 }
 
-impl PathBuffer {
+impl<T: Scalar> PathBuffer<T> {
     #[inline]
     pub fn new() -> Self {
         PathBuffer {
@@ -42,7 +45,7 @@ impl PathBuffer {
     }
 
     #[inline]
-    pub fn as_slice(&self) -> PathBufferSlice {
+    pub fn as_slice(&self) -> PathBufferSlice<T> {
         PathBufferSlice {
             points: &self.points,
             verbs: &self.verbs,
@@ -51,7 +54,7 @@ impl PathBuffer {
     }
 
     #[inline]
-    pub fn get(&self, index: usize) -> PathSlice {
+    pub fn get(&self, index: usize) -> PathSlice<T> {
         let desc = &self.paths[index];
         PathSlice {
             points: &self.points[desc.points.0 as usize..desc.points.1 as usize],
@@ -72,7 +75,7 @@ impl PathBuffer {
     }
 
     #[inline]
-    pub fn builder(&mut self) -> Builder {
+    pub fn builder(&mut self) -> Builder<T> {
         Builder::new(self)
     }
 
@@ -90,22 +93,22 @@ impl PathBuffer {
     }
 }
 
-impl fmt::Debug for PathBuffer {
+impl<T: Scalar> fmt::Debug for PathBuffer<T> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         self.as_slice().fmt(formatter)
     }
 }
 
 /// A view on a `PathBuffer`.
-pub struct PathBufferSlice<'l> {
-    points: &'l [Point],
+pub struct PathBufferSlice<'l, T: Scalar> {
+    points: &'l [Point<T>],
     verbs: &'l [path::Verb],
     paths: &'l [PathDescriptor],
 }
 
-impl<'l> PathBufferSlice<'l> {
+impl<'l, T: Scalar> PathBufferSlice<'l, T> {
     #[inline]
-    pub fn get(&self, index: usize) -> PathSlice {
+    pub fn get(&self, index: usize) -> PathSlice<T> {
         let desc = &self.paths[index];
         PathSlice {
             points: &self.points[desc.points.0 as usize..desc.points.1 as usize],
@@ -126,7 +129,7 @@ impl<'l> PathBufferSlice<'l> {
     }
 }
 
-impl<'l> fmt::Debug for PathBufferSlice<'l> {
+impl<'l, T: Scalar> fmt::Debug for PathBufferSlice<'l, T> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(
             formatter,
@@ -147,16 +150,16 @@ impl<'l> fmt::Debug for PathBufferSlice<'l> {
 /// A Builder that appends a path to an existing PathBuffer.
 ///
 /// Implements the `PathBuilder` trait.
-pub struct Builder<'l> {
-    buffer: &'l mut PathBuffer,
-    builder: path::Builder,
+pub struct Builder<'l, T: Scalar> {
+    buffer: &'l mut PathBuffer<T>,
+    builder: path::Builder<T>,
     points_start: u32,
     verbs_start: u32,
 }
 
-impl<'l> Builder<'l> {
+impl<'l, T: Scalar> Builder<'l, T> {
     #[inline]
-    fn new(buffer: &'l mut PathBuffer) -> Self {
+    fn new(buffer: &'l mut PathBuffer<T>) -> Self {
         let mut builder = path::Builder::new();
         std::mem::swap(&mut buffer.points, &mut builder.points);
         std::mem::swap(&mut buffer.verbs, &mut builder.verbs);
@@ -171,7 +174,7 @@ impl<'l> Builder<'l> {
     }
 
     #[inline]
-    pub fn with_attributes(self, num_attributes: usize) -> BuilderWithAttributes<'l> {
+    pub fn with_attributes(self, num_attributes: usize) -> BuilderWithAttributes<'l,T> {
         assert_eq!(self.builder.verbs.len(), self.verbs_start as usize);
 
         BuilderWithAttributes {
@@ -210,7 +213,7 @@ impl<'l> Builder<'l> {
     }
 
     #[inline]
-    pub fn begin(&mut self, at: Point) -> EndpointId {
+    pub fn begin(&mut self, at: Point<T>) -> EndpointId {
         let id = self.builder.begin(at);
         self.adjust_id(id)
     }
@@ -221,19 +224,24 @@ impl<'l> Builder<'l> {
     }
 
     #[inline]
-    pub fn line_to(&mut self, to: Point) -> EndpointId {
+    pub fn line_to(&mut self, to: Point<T>) -> EndpointId {
         let id = self.builder.line_to(to);
         self.adjust_id(id)
     }
 
     #[inline]
-    pub fn quadratic_bezier_to(&mut self, ctrl: Point, to: Point) -> EndpointId {
+    pub fn quadratic_bezier_to(&mut self, ctrl: Point<T>, to: Point<T>) -> EndpointId {
         let id = self.builder.quadratic_bezier_to(ctrl, to);
         self.adjust_id(id)
     }
 
     #[inline]
-    pub fn cubic_bezier_to(&mut self, ctrl1: Point, ctrl2: Point, to: Point) -> EndpointId {
+    pub fn cubic_bezier_to(
+        &mut self,
+        ctrl1: Point<T>,
+        ctrl2: Point<T>,
+        to: Point<T>,
+    ) -> EndpointId {
         let id = self.builder.cubic_bezier_to(ctrl1, ctrl2, to);
         self.adjust_id(id)
     }
@@ -244,9 +252,9 @@ impl<'l> Builder<'l> {
     }
 }
 
-impl<'l> PathBuilder for Builder<'l> {
+impl<'l, T: Scalar> PathBuilder<T> for Builder<'l, T> {
     #[inline]
-    fn begin(&mut self, at: Point) -> EndpointId {
+    fn begin(&mut self, at: Point<T>) -> EndpointId {
         self.begin(at)
     }
 
@@ -256,17 +264,17 @@ impl<'l> PathBuilder for Builder<'l> {
     }
 
     #[inline]
-    fn line_to(&mut self, to: Point) -> EndpointId {
+    fn line_to(&mut self, to: Point<T>) -> EndpointId {
         self.line_to(to)
     }
 
     #[inline]
-    fn quadratic_bezier_to(&mut self, ctrl: Point, to: Point) -> EndpointId {
+    fn quadratic_bezier_to(&mut self, ctrl: Point<T>, to: Point<T>) -> EndpointId {
         self.quadratic_bezier_to(ctrl, to)
     }
 
     #[inline]
-    fn cubic_bezier_to(&mut self, ctrl1: Point, ctrl2: Point, to: Point) -> EndpointId {
+    fn cubic_bezier_to(&mut self, ctrl1: Point<T>, ctrl2: Point<T>, to: Point<T>) -> EndpointId {
         self.cubic_bezier_to(ctrl1, ctrl2, to)
     }
 
@@ -276,7 +284,7 @@ impl<'l> PathBuilder for Builder<'l> {
     }
 }
 
-impl<'l> Build for Builder<'l> {
+impl<'l, T: Scalar> Build for Builder<'l, T> {
     type PathType = usize;
     fn build(self) -> usize {
         self.build()
@@ -284,16 +292,16 @@ impl<'l> Build for Builder<'l> {
 }
 
 /// A Builder that appends a path to an existing PathBuffer, with custom attributes.
-pub struct BuilderWithAttributes<'l> {
-    buffer: &'l mut PathBuffer,
-    builder: path::BuilderWithAttributes,
+pub struct BuilderWithAttributes<'l, T: Scalar> {
+    buffer: &'l mut PathBuffer<T>,
+    builder: path::BuilderWithAttributes<T>,
     points_start: u32,
     verbs_start: u32,
 }
 
-impl<'l> BuilderWithAttributes<'l> {
+impl<'l, T: Scalar> BuilderWithAttributes<'l, T> {
     #[inline]
-    pub fn new(buffer: &'l mut PathBuffer, num_attributes: usize) -> Self {
+    pub fn new(buffer: &'l mut PathBuffer<T>, num_attributes: usize) -> Self {
         let mut builder = path::Builder::new();
         std::mem::swap(&mut buffer.points, &mut builder.points);
         std::mem::swap(&mut buffer.verbs, &mut builder.verbs);
@@ -335,7 +343,7 @@ impl<'l> BuilderWithAttributes<'l> {
     }
 
     #[inline]
-    pub fn begin(&mut self, at: Point, attributes: &[f32]) -> EndpointId {
+    pub fn begin(&mut self, at: Point<T>, attributes: &[T]) -> EndpointId {
         let id = self.builder.begin(at, attributes);
         self.adjust_id(id)
     }
@@ -346,7 +354,7 @@ impl<'l> BuilderWithAttributes<'l> {
     }
 
     #[inline]
-    pub fn line_to(&mut self, to: Point, attributes: &[f32]) -> EndpointId {
+    pub fn line_to(&mut self, to: Point<T>, attributes: &[T]) -> EndpointId {
         let id = self.builder.line_to(to, attributes);
         self.adjust_id(id)
     }
@@ -354,9 +362,9 @@ impl<'l> BuilderWithAttributes<'l> {
     #[inline]
     pub fn quadratic_bezier_to(
         &mut self,
-        ctrl: Point,
-        to: Point,
-        attributes: &[f32],
+        ctrl: Point<T>,
+        to: Point<T>,
+        attributes: &[T],
     ) -> EndpointId {
         let id = self.builder.quadratic_bezier_to(ctrl, to, attributes);
         self.adjust_id(id)
@@ -365,10 +373,10 @@ impl<'l> BuilderWithAttributes<'l> {
     #[inline]
     pub fn cubic_bezier_to(
         &mut self,
-        ctrl1: Point,
-        ctrl2: Point,
-        to: Point,
-        attributes: &[f32],
+        ctrl1: Point<T>,
+        ctrl2: Point<T>,
+        to: Point<T>,
+        attributes: &[T],
     ) -> EndpointId {
         let id = self.builder.cubic_bezier_to(ctrl1, ctrl2, to, attributes);
         self.adjust_id(id)

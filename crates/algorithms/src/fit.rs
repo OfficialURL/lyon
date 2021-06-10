@@ -1,5 +1,7 @@
 //! Fit paths into rectangles.
 
+use lyon_path::geom::Scalar;
+
 use crate::aabb::bounding_rect;
 use crate::math::*;
 use crate::path::iterator::*;
@@ -21,8 +23,12 @@ pub enum FitStyle {
 }
 
 /// Computes a transform that fits a rectangle into another one.
-pub fn fit_rectangle(src_rect: &Rect, dst_rect: &Rect, style: FitStyle) -> Transform {
-    let scale: Vector = vector(
+pub fn fit_rectangle<T: Scalar>(
+    src_rect: &Rect<T>,
+    dst_rect: &Rect<T>,
+    style: FitStyle,
+) -> Transform<T> {
+    let scale = vector(
         dst_rect.size.width / src_rect.size.width,
         dst_rect.size.height / src_rect.size.height,
     );
@@ -30,19 +36,19 @@ pub fn fit_rectangle(src_rect: &Rect, dst_rect: &Rect, style: FitStyle) -> Trans
     let scale = match style {
         FitStyle::Stretch => scale,
         FitStyle::Min => {
-            let s = f32::min(scale.x, scale.y);
+            let s = T::min(scale.x, scale.y);
             vector(s, s)
         }
         FitStyle::Max => {
-            let s = f32::max(scale.x, scale.y);
+            let s = T::max(scale.x, scale.y);
             vector(s, s)
         }
         FitStyle::Horizontal => vector(scale.x, scale.x),
         FitStyle::Vertical => vector(scale.y, scale.y),
     };
 
-    let src_center = src_rect.origin.lerp(src_rect.max(), 0.5);
-    let dst_center = dst_rect.origin.lerp(dst_rect.max(), 0.5);
+    let src_center = src_rect.origin.lerp(src_rect.max(), T::HALF);
+    let dst_center = dst_rect.origin.lerp(dst_rect.max(), T::HALF);
 
     Transform::translation(-src_center.x, -src_center.y)
         .then_scale(scale.x, scale.y)
@@ -50,7 +56,7 @@ pub fn fit_rectangle(src_rect: &Rect, dst_rect: &Rect, style: FitStyle) -> Trans
 }
 
 /// Fits a path into a rectangle.
-pub fn fit_path(path: &Path, output_rect: &Rect, style: FitStyle) -> Path {
+pub fn fit_path<T: Scalar>(path: &Path<T>, output_rect: &Rect<T>, style: FitStyle) -> Path<T> {
     let aabb = bounding_rect(path.iter());
     let transform = fit_rectangle(&aabb, output_rect, style);
 
@@ -64,8 +70,12 @@ pub fn fit_path(path: &Path, output_rect: &Rect, style: FitStyle) -> Path {
 
 #[test]
 fn simple_fit() {
-    fn approx_eq(a: &Rect, b: &Rect) -> bool {
-        use crate::geom::euclid::approxeq::ApproxEq;
+    use crate::geom::euclid::approxeq::ApproxEq;
+
+    fn approx_eq<T: Scalar>(a: &Rect<T>, b: &Rect<T>) -> bool
+    where
+        T: ApproxEq<T>,
+    {
         let result = a.origin.approx_eq(&b.origin) && a.max().approx_eq(&b.max());
         if !result {
             println!("{:?} == {:?}", a, b);

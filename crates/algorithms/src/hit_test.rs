@@ -1,14 +1,20 @@
 //! Determine whether a point is inside a path.
 
+use lyon_path::geom::Scalar;
+
 use crate::geom::{CubicBezierSegment, LineSegment, QuadraticBezierSegment};
 use crate::math::Point;
 use crate::path::{FillRule, PathEvent};
-use std::f32;
 
 /// Returns whether the point is inside the path.
-pub fn hit_test_path<Iter>(point: &Point, path: Iter, fill_rule: FillRule, tolerance: f32) -> bool
+pub fn hit_test_path<T: Scalar, Iter>(
+    point: &Point<T>,
+    path: Iter,
+    fill_rule: FillRule,
+    tolerance: T,
+) -> bool
 where
-    Iter: Iterator<Item = PathEvent>,
+    Iter: Iterator<Item = PathEvent<T>>,
 {
     let winding = path_winding_number_at_position(point, path, tolerance);
 
@@ -19,9 +25,13 @@ where
 }
 
 /// Compute the winding number of a given position with respect to the path.
-pub fn path_winding_number_at_position<Iter>(point: &Point, path: Iter, tolerance: f32) -> i32
+pub fn path_winding_number_at_position<T: Scalar, Iter>(
+    point: &Point<T>,
+    path: Iter,
+    tolerance: T,
+) -> i32
 where
-    Iter: Iterator<Item = PathEvent>,
+    Iter: Iterator<Item = PathEvent<T>>,
 {
     // Loop over the edges and compute the winding number at that point by accumulating the
     // winding of all edges intersecting the horizontal line passing through our point which are
@@ -103,17 +113,17 @@ where
     winding
 }
 
-fn test_segment(
-    point: Point,
-    segment: &LineSegment<f32>,
+fn test_segment<T: Scalar>(
+    point: Point<T>,
+    segment: &LineSegment<T>,
     winding: &mut i32,
     prev_winding: &mut Option<i32>,
 ) {
     let y0 = segment.from.y;
     let y1 = segment.to.y;
-    if f32::min(y0, y1) > point.y
-        || f32::max(y0, y1) < point.y
-        || f32::min(segment.from.x, segment.to.x) > point.x
+    if T::min(y0, y1) > point.y
+        || T::max(y0, y1) < point.y
+        || T::min(segment.from.x, segment.to.x) > point.x
         || y0 == y1
     {
         return;

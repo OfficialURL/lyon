@@ -1,16 +1,23 @@
+use lyon_path::geom::Scalar;
+
 use crate::geometry_builder::{simple_builder, VertexBuffers};
 use crate::math::*;
 use crate::path::iterator::*;
 use crate::path::{Path, PathSlice};
 use crate::{FillOptions, FillRule, FillTessellator, TessellationError};
 
-fn tessellate(path: PathSlice, fill_rule: FillRule, log: bool) -> Result<usize, TessellationError> {
-    let mut buffers: VertexBuffers<Point, u16> = VertexBuffers::new();
+fn tessellate<T: Scalar>(
+    path: PathSlice<T>,
+    fill_rule: FillRule,
+    log: bool,
+) -> Result<usize, TessellationError> {
+    let mut buffers: VertexBuffers<Point<T>, u16> = VertexBuffers::new();
     {
-        let options = FillOptions::tolerance(0.05).with_fill_rule(fill_rule);
+        let tol = T::value(0.05);
+        let options = FillOptions::tolerance(tol).with_fill_rule(fill_rule);
 
         let mut builder = Path::builder();
-        for e in path.iter().flattened(0.05) {
+        for e in path.iter().flattened(tol) {
             builder.path_event(e);
         }
 
@@ -23,12 +30,12 @@ fn tessellate(path: PathSlice, fill_rule: FillRule, log: bool) -> Result<usize, 
     return Ok(buffers.indices.len() / 3);
 }
 
-fn test_path(path: PathSlice) {
+fn test_path<T: Scalar>(path: PathSlice<T>) {
     test_path_with_fill_rule(path, FillRule::EvenOdd);
     test_path_with_fill_rule(path, FillRule::NonZero);
 }
 
-fn test_path_with_fill_rule(path: PathSlice, fill_rule: FillRule) {
+fn test_path_with_fill_rule<T: Scalar>(path: PathSlice<T>, fill_rule: FillRule) {
     let add_logging = std::env::var("LYON_ENABLE_LOGGING").is_ok();
     let find_test_case = std::env::var("LYON_REDUCED_TESTCASE").is_ok();
 
@@ -39,7 +46,7 @@ fn test_path_with_fill_rule(path: PathSlice, fill_rule: FillRule) {
     }
 
     if find_test_case {
-        crate::extra::debugging::find_reduced_test_case(path, &|path: Path| {
+        crate::extra::debugging::find_reduced_test_case(path, &|path: Path<T>| {
             return tessellate(path.as_slice(), fill_rule, false).is_err();
         });
     }

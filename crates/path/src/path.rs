@@ -1,6 +1,8 @@
 //! The default path data structure.
 //!
 
+use lyon_geom::Scalar;
+
 use crate::builder::*;
 use crate::geom::traits::Transformation;
 use crate::math::*;
@@ -31,7 +33,7 @@ pub(crate) enum Verb {
 ///
 /// # Custom attributes
 ///
-/// Paths can store a fixed number of extra `f32` values per endpoint, called
+/// Paths can store a fixed number of extra floating point values per endpoint, called
 /// "custom attributes" or "interpolated attributes" through the documentation.
 /// These can be handy to represent arbitrary attributes such as variable colors,
 /// line width, etc.
@@ -64,42 +66,42 @@ pub(crate) enum Verb {
 ///
 #[derive(Clone, Default)]
 #[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
-pub struct Path {
-    points: Box<[Point]>,
+pub struct Path<T: Scalar> {
+    points: Box<[Point<T>]>,
     verbs: Box<[Verb]>,
     num_attributes: usize,
 }
 
 /// A view on a `Path`.
 #[derive(Copy, Clone)]
-pub struct PathSlice<'l> {
-    pub(crate) points: &'l [Point],
+pub struct PathSlice<'l, T: Scalar> {
+    pub(crate) points: &'l [Point<T>],
     pub(crate) verbs: &'l [Verb],
     pub(crate) num_attributes: usize,
 }
 
-impl Path {
+impl<T: Scalar> Path<T> {
     /// Creates a [Builder](struct.Builder.html) to build a path.
-    pub fn builder() -> Builder {
+    pub fn builder() -> Builder<T> {
         Builder::new()
     }
 
     /// Creates a [BuilderWithAttributes](struct.BuilderWithAttributes.html) to build a path
     /// with custom attributes.
-    pub fn builder_with_attributes(num_attributes: usize) -> BuilderWithAttributes {
+    pub fn builder_with_attributes(num_attributes: usize) -> BuilderWithAttributes<T> {
         BuilderWithAttributes::new(num_attributes)
     }
 
     /// Creates an [WithSvg](../builder/struct.WithSvg.html) to build a path
     /// with a rich set of commands.
-    pub fn svg_builder() -> WithSvg<Builder> {
+    pub fn svg_builder() -> WithSvg<T, Builder<T>> {
         WithSvg::new(Self::builder())
     }
 
     /// Creates an Empty `Path`.
     #[inline]
-    pub fn new() -> Path {
-        Path {
+    pub fn new() -> Self {
+        Self {
             points: Box::new([]),
             verbs: Box::new([]),
             num_attributes: 0,
@@ -108,7 +110,7 @@ impl Path {
 
     /// Returns a view on this `Path`.
     #[inline]
-    pub fn as_slice(&self) -> PathSlice {
+    pub fn as_slice(&self) -> PathSlice<T> {
         PathSlice {
             points: &self.points[..],
             verbs: &self.verbs[..],
@@ -118,12 +120,12 @@ impl Path {
 
     /// Returns a slice over an endpoint's custom attributes.
     #[inline]
-    pub fn attributes(&self, endpoint: EndpointId) -> &[f32] {
+    pub fn attributes(&self, endpoint: EndpointId) -> &[T] {
         interpolated_attributes(self.num_attributes, &self.points, endpoint)
     }
 
     /// Iterates over the entire `Path`.
-    pub fn iter(&self) -> Iter {
+    pub fn iter(&self) -> Iter<T> {
         Iter::new(self.num_attributes, &self.points[..], &self.verbs[..])
     }
 
@@ -132,13 +134,13 @@ impl Path {
         IdIter::new(self.num_attributes, &self.verbs[..])
     }
 
-    pub fn iter_with_attributes(&self) -> IterWithAttributes {
+    pub fn iter_with_attributes(&self) -> IterWithAttributes<T> {
         IterWithAttributes::new(self.num_attributes(), &self.points[..], &self.verbs[..])
     }
 
     /// Applies a transform to all endpoints and control points of this path and
     /// Returns the result.
-    pub fn transformed<T: Transformation<f32>>(mut self, transform: &T) -> Self {
+    pub fn transformed<U: Transformation<T>>(mut self, transform: &U) -> Self {
         self.apply_transform(transform);
 
         self
@@ -150,7 +152,7 @@ impl Path {
         reverse_path(self.as_slice())
     }
 
-    fn apply_transform<T: Transformation<f32>>(&mut self, transform: &T) {
+    fn apply_transform<U: Transformation<T>>(&mut self, transform: &U) {
         let iter = IdIter::new(self.num_attributes, &self.verbs[..]);
 
         for evt in iter {
@@ -185,47 +187,47 @@ impl Path {
     }
 }
 
-impl std::ops::Index<EndpointId> for Path {
-    type Output = Point;
-    fn index(&self, id: EndpointId) -> &Point {
+impl<T: Scalar> std::ops::Index<EndpointId> for Path<T> {
+    type Output = Point<T>;
+    fn index(&self, id: EndpointId) -> &Point<T> {
         &self.points[id.to_usize()]
     }
 }
 
-impl std::ops::Index<ControlPointId> for Path {
-    type Output = Point;
-    fn index(&self, id: ControlPointId) -> &Point {
+impl<T: Scalar> std::ops::Index<ControlPointId> for Path<T> {
+    type Output = Point<T>;
+    fn index(&self, id: ControlPointId) -> &Point<T> {
         &self.points[id.to_usize()]
     }
 }
 
-impl<'l> IntoIterator for &'l Path {
-    type Item = PathEvent;
-    type IntoIter = Iter<'l>;
+impl<'l, T: Scalar> IntoIterator for &'l Path<T> {
+    type Item = PathEvent<T>;
+    type IntoIter = Iter<'l, T>;
 
-    fn into_iter(self) -> Iter<'l> {
+    fn into_iter(self) -> Iter<'l, T> {
         self.iter()
     }
 }
 
-impl<'l> Into<PathSlice<'l>> for &'l Path {
-    fn into(self) -> PathSlice<'l> {
+impl<'l, T: Scalar> Into<PathSlice<'l, T>> for &'l Path<T> {
+    fn into(self) -> PathSlice<'l, T> {
         self.as_slice()
     }
 }
 
-impl PositionStore for Path {
-    fn get_endpoint(&self, id: EndpointId) -> Point {
+impl<T: Scalar> PositionStore<T> for Path<T> {
+    fn get_endpoint(&self, id: EndpointId) -> Point<T> {
         self.points[id.to_usize()]
     }
 
-    fn get_control_point(&self, id: ControlPointId) -> Point {
+    fn get_control_point(&self, id: ControlPointId) -> Point<T> {
         self.points[id.to_usize()]
     }
 }
 
-impl AttributeStore for Path {
-    fn get(&self, id: EndpointId) -> &[f32] {
+impl<T: Scalar> AttributeStore<T> for Path<T> {
+    fn get(&self, id: EndpointId) -> &[T] {
         interpolated_attributes(self.num_attributes, &self.points, id)
     }
 
@@ -234,16 +236,16 @@ impl AttributeStore for Path {
     }
 }
 
-impl fmt::Debug for Path {
+impl<T: Scalar> fmt::Debug for Path<T> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         self.as_slice().fmt(formatter)
     }
 }
 
 /// An immutable view over a Path.
-impl<'l> PathSlice<'l> {
+impl<'l, T: Scalar> PathSlice<'l, T> {
     /// Iterates over the path.
-    pub fn iter<'a>(&'a self) -> Iter<'l> {
+    pub fn iter<'a>(&'a self) -> Iter<'l, T> {
         Iter::new(self.num_attributes, self.points, self.verbs)
     }
 
@@ -258,14 +260,14 @@ impl<'l> PathSlice<'l> {
 
     /// Returns a slice over an endpoint's custom attributes.
     #[inline]
-    pub fn attributes(&self, endpoint: EndpointId) -> &[f32] {
+    pub fn attributes(&self, endpoint: EndpointId) -> &[T] {
         interpolated_attributes(self.num_attributes, &self.points, endpoint)
     }
 }
 
-impl<'l> fmt::Debug for PathSlice<'l> {
+impl<'l, T: Scalar> fmt::Debug for PathSlice<'l, T> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        fn write_point(formatter: &mut fmt::Formatter, point: Point) -> fmt::Result {
+        fn write_point<T: Scalar>(formatter: &mut fmt::Formatter, point: Point<T>) -> fmt::Result {
             write!(formatter, " ")?;
             fmt::Debug::fmt(&point.x, formatter)?;
             write!(formatter, " ")?;
@@ -308,50 +310,50 @@ impl<'l> fmt::Debug for PathSlice<'l> {
     }
 }
 
-impl<'l> std::ops::Index<EndpointId> for PathSlice<'l> {
-    type Output = Point;
-    fn index(&self, id: EndpointId) -> &Point {
+impl<'l, T: Scalar> std::ops::Index<EndpointId> for PathSlice<'l, T> {
+    type Output = Point<T>;
+    fn index(&self, id: EndpointId) -> &Point<T> {
         &self.points[id.to_usize()]
     }
 }
 
-impl<'l> std::ops::Index<ControlPointId> for PathSlice<'l> {
-    type Output = Point;
-    fn index(&self, id: ControlPointId) -> &Point {
+impl<'l, T: Scalar> std::ops::Index<ControlPointId> for PathSlice<'l, T> {
+    type Output = Point<T>;
+    fn index(&self, id: ControlPointId) -> &Point<T> {
         &self.points[id.to_usize()]
     }
 }
 
-impl<'l> IntoIterator for PathSlice<'l> {
-    type Item = PathEvent;
-    type IntoIter = Iter<'l>;
+impl<'l, T: Scalar> IntoIterator for PathSlice<'l, T> {
+    type Item = PathEvent<T>;
+    type IntoIter = Iter<'l, T>;
 
-    fn into_iter(self) -> Iter<'l> {
+    fn into_iter(self) -> Iter<'l, T> {
         self.iter()
     }
 }
 
-impl<'l, 'a> IntoIterator for &'a PathSlice<'l> {
-    type Item = PathEvent;
-    type IntoIter = Iter<'l>;
+impl<'l, 'a, T: Scalar> IntoIterator for &'a PathSlice<'l, T> {
+    type Item = PathEvent<T>;
+    type IntoIter = Iter<'l, T>;
 
-    fn into_iter(self) -> Iter<'l> {
+    fn into_iter(self) -> Iter<'l, T> {
         self.iter()
     }
 }
 
-impl<'l> PositionStore for PathSlice<'l> {
-    fn get_endpoint(&self, id: EndpointId) -> Point {
+impl<'l, T: Scalar> PositionStore<T> for PathSlice<'l, T> {
+    fn get_endpoint(&self, id: EndpointId) -> Point<T> {
         self.points[id.to_usize()]
     }
 
-    fn get_control_point(&self, id: ControlPointId) -> Point {
+    fn get_control_point(&self, id: ControlPointId) -> Point<T> {
         self.points[id.to_usize()]
     }
 }
 
-impl<'l> AttributeStore for PathSlice<'l> {
-    fn get(&self, id: EndpointId) -> &[f32] {
+impl<'l, T: Scalar> AttributeStore<T> for PathSlice<'l, T> {
+    fn get(&self, id: EndpointId) -> &[T] {
         interpolated_attributes(self.num_attributes, self.points, id)
     }
 
@@ -361,13 +363,13 @@ impl<'l> AttributeStore for PathSlice<'l> {
 }
 
 /// The default builder for `Path`.
-pub struct Builder {
-    pub(crate) points: Vec<Point>,
+pub struct Builder<T: Scalar> {
+    pub(crate) points: Vec<Point<T>>,
     pub(crate) verbs: Vec<Verb>,
     validator: DebugValidator,
 }
 
-impl Builder {
+impl<T: Scalar> Builder<T> {
     pub fn new() -> Self {
         Builder {
             points: Vec::new(),
@@ -384,13 +386,13 @@ impl Builder {
         }
     }
 
-    pub fn with_svg(self) -> WithSvg<Self> {
+    pub fn with_svg(self) -> WithSvg<T, Self> {
         assert!(self.verbs.is_empty());
         WithSvg::new(self)
     }
 
     #[inline]
-    pub fn begin(&mut self, at: Point) -> EndpointId {
+    pub fn begin(&mut self, at: Point<T>) -> EndpointId {
         self.validator.begin();
         nan_check(at);
 
@@ -414,7 +416,7 @@ impl Builder {
     }
 
     #[inline]
-    pub fn line_to(&mut self, to: Point) -> EndpointId {
+    pub fn line_to(&mut self, to: Point<T>) -> EndpointId {
         self.validator.edge();
         nan_check(to);
 
@@ -426,7 +428,7 @@ impl Builder {
     }
 
     #[inline]
-    pub fn quadratic_bezier_to(&mut self, ctrl: Point, to: Point) -> EndpointId {
+    pub fn quadratic_bezier_to(&mut self, ctrl: Point<T>, to: Point<T>) -> EndpointId {
         self.validator.edge();
         nan_check(ctrl);
         nan_check(to);
@@ -440,7 +442,12 @@ impl Builder {
     }
 
     #[inline]
-    pub fn cubic_bezier_to(&mut self, ctrl1: Point, ctrl2: Point, to: Point) -> EndpointId {
+    pub fn cubic_bezier_to(
+        &mut self,
+        ctrl1: Point<T>,
+        ctrl2: Point<T>,
+        to: Point<T>,
+    ) -> EndpointId {
         self.validator.edge();
         nan_check(ctrl1);
         nan_check(ctrl2);
@@ -456,7 +463,7 @@ impl Builder {
     }
 
     #[inline]
-    pub fn build(self) -> Path {
+    pub fn build(self) -> Path<T> {
         self.validator.build();
         Path {
             points: self.points.into_boxed_slice(),
@@ -465,7 +472,7 @@ impl Builder {
         }
     }
 
-    pub fn path_event(&mut self, event: PathEvent) {
+    pub fn path_event(&mut self, event: PathEvent<T>) {
         match event {
             PathEvent::Begin { at } => {
                 self.begin(at);
@@ -496,13 +503,13 @@ impl Builder {
     }
 
     #[inline]
-    pub fn concatenate(&mut self, paths: &[PathSlice]) {
+    pub fn concatenate(&mut self, paths: &[PathSlice<T>]) {
         concatenate_paths(&mut self.points, &mut self.verbs, paths, 0);
     }
 }
 
-impl PathBuilder for Builder {
-    fn begin(&mut self, at: Point) -> EndpointId {
+impl<T: Scalar> PathBuilder<T> for Builder<T> {
+    fn begin(&mut self, at: Point<T>) -> EndpointId {
         self.begin(at)
     }
 
@@ -510,15 +517,15 @@ impl PathBuilder for Builder {
         self.end(close);
     }
 
-    fn line_to(&mut self, to: Point) -> EndpointId {
+    fn line_to(&mut self, to: Point<T>) -> EndpointId {
         self.line_to(to)
     }
 
-    fn quadratic_bezier_to(&mut self, ctrl: Point, to: Point) -> EndpointId {
+    fn quadratic_bezier_to(&mut self, ctrl: Point<T>, to: Point<T>) -> EndpointId {
         self.quadratic_bezier_to(ctrl, to)
     }
 
-    fn cubic_bezier_to(&mut self, ctrl1: Point, ctrl2: Point, to: Point) -> EndpointId {
+    fn cubic_bezier_to(&mut self, ctrl1: Point<T>, ctrl2: Point<T>, to: Point<T>) -> EndpointId {
         self.cubic_bezier_to(ctrl1, ctrl2, to)
     }
 
@@ -527,24 +534,24 @@ impl PathBuilder for Builder {
     }
 }
 
-impl Build for Builder {
-    type PathType = Path;
+impl<T: Scalar> Build for Builder<T> {
+    type PathType = Path<T>;
 
-    fn build(self) -> Path {
+    fn build(self) -> Path<T> {
         self.build()
     }
 }
 
 /// A builder for `Path` with custom attributes.
 ///
-/// Custom attributes are a fixed number of `f32` values associated with each endpoint.
+/// Custom attributes are a fixed number of floating point values associated with each endpoint.
 /// All endpoints must have the same number of custom attributes,
-pub struct BuilderWithAttributes {
-    pub(crate) builder: Builder,
+pub struct BuilderWithAttributes<T: Scalar> {
+    pub(crate) builder: Builder<T>,
     pub(crate) num_attributes: usize,
 }
 
-impl BuilderWithAttributes {
+impl<T: Scalar> BuilderWithAttributes<T> {
     pub fn new(num_attributes: usize) -> Self {
         BuilderWithAttributes {
             builder: Builder::new(),
@@ -560,7 +567,7 @@ impl BuilderWithAttributes {
     }
 
     #[inline]
-    pub fn begin(&mut self, at: Point, attributes: &[f32]) -> EndpointId {
+    pub fn begin(&mut self, at: Point<T>, attributes: &[T]) -> EndpointId {
         let id = self.builder.begin(at);
         self.push_attributes(attributes);
 
@@ -578,7 +585,7 @@ impl BuilderWithAttributes {
     }
 
     #[inline]
-    pub fn line_to(&mut self, to: Point, attributes: &[f32]) -> EndpointId {
+    pub fn line_to(&mut self, to: Point<T>, attributes: &[T]) -> EndpointId {
         let id = self.builder.line_to(to);
         self.push_attributes(attributes);
 
@@ -588,9 +595,9 @@ impl BuilderWithAttributes {
     #[inline]
     pub fn quadratic_bezier_to(
         &mut self,
-        ctrl: Point,
-        to: Point,
-        attributes: &[f32],
+        ctrl: Point<T>,
+        to: Point<T>,
+        attributes: &[T],
     ) -> EndpointId {
         let id = self.builder.quadratic_bezier_to(ctrl, to);
         self.push_attributes(attributes);
@@ -601,10 +608,10 @@ impl BuilderWithAttributes {
     #[inline]
     pub fn cubic_bezier_to(
         &mut self,
-        ctrl1: Point,
-        ctrl2: Point,
-        to: Point,
-        attributes: &[f32],
+        ctrl1: Point<T>,
+        ctrl2: Point<T>,
+        to: Point<T>,
+        attributes: &[T],
     ) -> EndpointId {
         let id = self.builder.cubic_bezier_to(ctrl1, ctrl2, to);
         self.push_attributes(attributes);
@@ -613,7 +620,7 @@ impl BuilderWithAttributes {
     }
 
     #[inline]
-    pub fn build(self) -> Path {
+    pub fn build(self) -> Path<T> {
         self.builder.validator.build();
         Path {
             points: self.builder.points.into_boxed_slice(),
@@ -623,7 +630,7 @@ impl BuilderWithAttributes {
     }
 
     #[inline]
-    pub fn concatenate(&mut self, paths: &[PathSlice]) {
+    pub fn concatenate(&mut self, paths: &[PathSlice<T>]) {
         concatenate_paths(
             &mut self.builder.points,
             &mut self.builder.verbs,
@@ -632,7 +639,7 @@ impl BuilderWithAttributes {
         );
     }
 
-    fn push_attributes(&mut self, attributes: &[f32]) {
+    fn push_attributes(&mut self, attributes: &[T]) {
         assert_eq!(attributes.len(), self.num_attributes);
         for i in 0..(self.num_attributes / 2) {
             let x = attributes[i * 2];
@@ -641,36 +648,36 @@ impl BuilderWithAttributes {
         }
         if self.num_attributes % 2 == 1 {
             let x = attributes[self.num_attributes - 1];
-            self.builder.points.push(point(x, 0.0));
+            self.builder.points.push(point(x, T::ZERO));
         }
     }
 }
 
 #[inline]
-fn nan_check(p: Point) {
+fn nan_check<T: Scalar>(p: Point<T>) {
     debug_assert!(p.x.is_finite());
     debug_assert!(p.y.is_finite());
 }
 
-/// An iterator for `Path` and `PathSlice`.
+/// An iterator for `Path<T>` and `PathSlice<T>`.
 #[derive(Clone)]
-pub struct Iter<'l> {
-    points: PointIter<'l>,
-    verbs: ::std::slice::Iter<'l, Verb>,
-    current: Point,
-    first: Point,
+pub struct Iter<'l, T: Scalar> {
+    points: PointIter<'l, T>,
+    verbs: std::slice::Iter<'l, Verb>,
+    current: Point<T>,
+    first: Point<T>,
     num_attributes: usize,
     // Number of slots in the points array occupied by the custom attributes.
     attrib_stride: usize,
 }
 
-impl<'l> Iter<'l> {
-    fn new(num_attributes: usize, points: &'l [Point], verbs: &'l [Verb]) -> Self {
+impl<'l, T: Scalar> Iter<'l, T> {
+    fn new(num_attributes: usize, points: &'l [Point<T>], verbs: &'l [Verb]) -> Self {
         Iter {
             points: PointIter::new(points),
             verbs: verbs.iter(),
-            current: point(0.0, 0.0),
-            first: point(0.0, 0.0),
+            current: point(T::ZERO, T::ZERO),
+            first: point(T::ZERO, T::ZERO),
             num_attributes,
             attrib_stride: (num_attributes + 1) / 2,
         }
@@ -682,10 +689,10 @@ impl<'l> Iter<'l> {
     }
 }
 
-impl<'l> Iterator for Iter<'l> {
-    type Item = PathEvent;
+impl<'l, T: Scalar> Iterator for Iter<'l, T> {
+    type Item = PathEvent<T>;
     #[inline]
-    fn next(&mut self) -> Option<PathEvent> {
+    fn next(&mut self) -> Option<PathEvent<T>> {
         match self.verbs.next() {
             Some(&Verb::Begin) => {
                 self.current = self.points.next();
@@ -755,14 +762,14 @@ impl<'l> Iterator for Iter<'l> {
 /// It makes an unfortunately large difference (the simple iterator
 /// benchmarks are 2 to 3 times faster).
 #[derive(Copy, Clone)]
-struct PointIter<'l> {
-    ptr: *const Point,
-    end: *const Point,
-    _marker: std::marker::PhantomData<&'l Point>,
+struct PointIter<'l, T> {
+    ptr: *const Point<T>,
+    end: *const Point<T>,
+    _marker: std::marker::PhantomData<&'l Point<T>>,
 }
 
-impl<'l> PointIter<'l> {
-    fn new(slice: &'l [Point]) -> Self {
+impl<'l, T: Scalar> PointIter<'l, T> {
+    fn new(slice: &'l [Point<T>]) -> Self {
         let ptr = slice.as_ptr();
         let end = unsafe { ptr.add(slice.len()) };
         PointIter {
@@ -774,16 +781,16 @@ impl<'l> PointIter<'l> {
 
     #[inline]
     fn remaining_len(&self) -> usize {
-        (self.end as usize - self.ptr as usize) / std::mem::size_of::<Point>()
+        (self.end as usize - self.ptr as usize) / std::mem::size_of::<Point<T>>()
     }
 
     #[inline]
-    fn next(&mut self) -> Point {
+    fn next(&mut self) -> Point<T> {
         // Don't bother panicking here. calls to next
         // are always followed by advance_n which will
         // catch the issue and panic.
         if self.ptr >= self.end {
-            return point(std::f32::NAN, std::f32::NAN);
+            return point(T::nan(), T::nan());
         }
 
         unsafe {
@@ -805,28 +812,28 @@ impl<'l> PointIter<'l> {
 
 /// An iterator for `Path` and `PathSlice`.
 #[derive(Clone)]
-pub struct IterWithAttributes<'l> {
-    points: PointIter<'l>,
-    verbs: ::std::slice::Iter<'l, Verb>,
-    current: (Point, &'l [f32]),
-    first: (Point, &'l [f32]),
+pub struct IterWithAttributes<'l, T: Scalar> {
+    points: PointIter<'l, T>,
+    verbs: std::slice::Iter<'l, Verb>,
+    current: (Point<T>, &'l [T]),
+    first: (Point<T>, &'l [T]),
     num_attributes: usize,
     attrib_stride: usize,
 }
 
-impl<'l> IterWithAttributes<'l> {
-    fn new(num_attributes: usize, points: &'l [Point], verbs: &'l [Verb]) -> Self {
+impl<'l, T: Scalar> IterWithAttributes<'l, T> {
+    fn new(num_attributes: usize, points: &'l [Point<T>], verbs: &'l [Verb]) -> Self {
         IterWithAttributes {
             points: PointIter::new(points),
             verbs: verbs.iter(),
-            current: (point(0.0, 0.0), &[]),
-            first: (point(0.0, 0.0), &[]),
+            current: (point(T::ZERO, T::ZERO), &[]),
+            first: (point(T::ZERO, T::ZERO), &[]),
             num_attributes,
             attrib_stride: (num_attributes + 1) / 2,
         }
     }
 
-    pub fn points(self) -> Iter<'l> {
+    pub fn points(self) -> Iter<'l, T> {
         Iter {
             points: self.points,
             verbs: self.verbs,
@@ -838,9 +845,9 @@ impl<'l> IterWithAttributes<'l> {
     }
 
     #[inline]
-    fn pop_endpoint(&mut self) -> (Point, &'l [f32]) {
+    fn pop_endpoint(&mut self) -> (Point<T>, &'l [T]) {
         let position = self.points.next();
-        let attributes_ptr = self.points.ptr as *const f32;
+        let attributes_ptr = self.points.ptr as *const T;
         self.points.advance_n(self.attrib_stride);
         let attributes = unsafe {
             // SAFETY: advance_n would have panicked if the slice is out of bounds
@@ -851,8 +858,8 @@ impl<'l> IterWithAttributes<'l> {
     }
 }
 
-impl<'l> Iterator for IterWithAttributes<'l> {
-    type Item = Event<(Point, &'l [f32]), Point>;
+impl<'l, T: Scalar> Iterator for IterWithAttributes<'l, T> {
+    type Item = Event<(Point<T>, &'l [T]), Point<T>>;
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         match self.verbs.next() {
@@ -917,7 +924,7 @@ impl<'l> Iterator for IterWithAttributes<'l> {
 /// An iterator of endpoint and control point ids for `Path` and `PathSlice`.
 #[derive(Clone, Debug)]
 pub struct IdIter<'l> {
-    verbs: ::std::slice::Iter<'l, Verb>,
+    verbs: std::slice::Iter<'l, Verb>,
     current: u32,
     first: u32,
     evt: u32,
@@ -1005,11 +1012,11 @@ impl<'l> Iterator for IdIter<'l> {
 }
 
 #[inline]
-fn interpolated_attributes(
+fn interpolated_attributes<T: Scalar>(
     num_attributes: usize,
-    points: &[Point],
+    points: &[Point<T>],
     endpoint: EndpointId,
-) -> &[f32] {
+) -> &[T] {
     if num_attributes == 0 {
         return &[];
     }
@@ -1018,15 +1025,15 @@ fn interpolated_attributes(
     assert!(idx + (num_attributes + 1) / 2 <= points.len());
 
     unsafe {
-        let ptr = &points[idx].x as *const f32;
+        let ptr = &points[idx].x as *const T;
         std::slice::from_raw_parts(ptr, num_attributes)
     }
 }
 
-fn concatenate_paths(
-    points: &mut Vec<Point>,
+fn concatenate_paths<T: Scalar>(
+    points: &mut Vec<Point<T>>,
     verbs: &mut Vec<Verb>,
-    paths: &[PathSlice],
+    paths: &[PathSlice<T>],
     num_attributes: usize,
 ) {
     let mut np = 0;
@@ -1047,7 +1054,7 @@ fn concatenate_paths(
     }
 }
 
-fn reverse_path(path: PathSlice) -> Path {
+fn reverse_path<T: Scalar>(path: PathSlice<T>) -> Path<T> {
     let mut builder = Path::builder_with_attributes(path.num_attributes());
 
     let attrib_stride = (path.num_attributes() + 1) / 2;
@@ -1129,9 +1136,9 @@ fn test_reverse_path_simple() {
     let mut it = p2.iter_with_attributes();
 
     // Using a function that explicits the argument types works around type inference issue.
-    fn check<'l>(
-        a: Option<Event<(Point, &'l [f32]), Point>>,
-        b: Option<Event<(Point, &'l [f32]), Point>>,
+    fn check<'l, T: Scalar>(
+        a: Option<Event<(Point<T>, &'l [T]), Point<T>>>,
+        b: Option<Event<(Point<T>, &'l [T]), Point<T>>>,
     ) -> bool {
         if a != b {
             println!("left: {:?}", a);
@@ -1205,9 +1212,9 @@ fn test_reverse_path() {
     let mut it = p2.iter_with_attributes();
 
     // Using a function that explicits the argument types works around type inference issue.
-    fn check<'l>(
-        a: Option<Event<(Point, &'l [f32]), Point>>,
-        b: Option<Event<(Point, &'l [f32]), Point>>,
+    fn check<'l, T: Scalar>(
+        a: Option<Event<(Point<T>, &'l [T]), Point<T>>>,
+        b: Option<Event<(Point<T>, &'l [T]), Point<T>>>,
     ) -> bool {
         if a != b {
             println!("left: {:?}", a);
@@ -1362,7 +1369,11 @@ fn test_reverse_path_no_close() {
 
 #[test]
 fn test_reverse_empty_path() {
-    let p1 = Path::builder().build();
+    let p1 = Path::<f32>::builder().build();
+    let p2 = p1.reversed();
+    assert_eq!(p2.iter().next(), None);
+
+    let p1 = Path::<f64>::builder().build();
     let p2 = p1.reversed();
     assert_eq!(p2.iter().next(), None);
 }
@@ -1590,7 +1601,13 @@ fn test_path_builder_1() {
 
 #[test]
 fn test_path_builder_empty() {
-    let path = Path::builder_with_attributes(5).build();
+    let path = Path::<f32>::builder_with_attributes(5).build();
+    let mut it = path.iter();
+    assert_eq!(it.next(), None);
+    assert_eq!(it.next(), None);
+
+    
+    let path = Path::<f64>::builder_with_attributes(5).build();
     let mut it = path.iter();
     assert_eq!(it.next(), None);
     assert_eq!(it.next(), None);

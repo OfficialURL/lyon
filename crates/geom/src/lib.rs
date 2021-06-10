@@ -120,8 +120,10 @@ mod scalar {
     pub(crate) use num_traits::cast::cast;
     pub(crate) use num_traits::{Float, FloatConst, NumCast};
 
+    use euclid::num::Round;
     use std::fmt::{Debug, Display};
     use std::ops::{AddAssign, DivAssign, MulAssign, SubAssign};
+    use std::panic::{RefUnwindSafe, UnwindSafe};
 
     pub trait Scalar:
         Float
@@ -135,7 +137,11 @@ mod scalar {
         + SubAssign
         + MulAssign
         + DivAssign
+        + UnwindSafe
+        + RefUnwindSafe
+        + Round
     {
+        const ONE_TENTH: Self;
         const HALF: Self;
         const ZERO: Self;
         const ONE: Self;
@@ -151,10 +157,14 @@ mod scalar {
 
         const EPSILON: Self;
 
-        fn value(v: f32) -> Self;
+        // https://spencermortensen.com/articles/bezier-circle/
+        const BEZIER: Self;
+
+        fn value(v: f64) -> Self;
     }
 
     impl Scalar for f32 {
+        const ONE_TENTH: Self = 0.1;
         const HALF: Self = 0.5;
         const ZERO: Self = 0.0;
         const ONE: Self = 1.0;
@@ -170,13 +180,16 @@ mod scalar {
 
         const EPSILON: Self = 1e-5;
 
+        const BEZIER: Self = 0.551915024494;
+
         #[inline]
-        fn value(v: f32) -> Self {
-            v
+        fn value(v: f64) -> Self {
+            v as f32
         }
     }
 
     impl Scalar for f64 {
+        const ONE_TENTH: Self = 0.1;
         const HALF: Self = 0.5;
         const ZERO: Self = 0.0;
         const ONE: Self = 1.0;
@@ -192,9 +205,11 @@ mod scalar {
 
         const EPSILON: Self = 1e-8;
 
+        const BEZIER: Self = 0.551915024494;
+
         #[inline]
-        fn value(v: f32) -> Self {
-            v as f64
+        fn value(v: f64) -> Self {
+            v
         }
     }
 }

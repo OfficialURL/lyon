@@ -1,11 +1,12 @@
+use lyon_path::geom::euclid::approxeq::ApproxEq;
+use lyon_path::geom::Scalar;
+
 use crate::parser::{PathParser, PathSegment};
 
 use crate::path::builder::*;
 use crate::path::geom::Arc;
 use crate::path::math::{point, vector, Angle, Point, Vector};
 use crate::path::ArcFlags;
-
-use std::f32::consts::PI;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ParseError;
@@ -30,9 +31,13 @@ pub struct ParseError;
 /// let path = build_path(svg_builder, commands);
 /// # }
 /// ```
-pub fn build_path<Builder>(mut builder: Builder, src: &str) -> Result<Builder::PathType, ParseError>
+pub fn build_path<T: Scalar, Builder>(
+    mut builder: Builder,
+    src: &str,
+) -> Result<Builder::PathType, ParseError>
 where
-    Builder: SvgPathBuilder + Build,
+    T: ApproxEq<T>,
+    Builder: SvgPathBuilder<T> + Build,
 {
     for item in PathParser::from(src) {
         if let Ok(segment) = item {
@@ -43,40 +48,35 @@ where
     Ok(builder.build())
 }
 
-fn svg_event<Builder>(token: &PathSegment, builder: &mut Builder)
+fn svg_event<T: Scalar, Builder>(token: &PathSegment, builder: &mut Builder)
 where
-    Builder: SvgPathBuilder,
+    T: ApproxEq<T>,
+    Builder: SvgPathBuilder<T>,
 {
-    fn vec2(x: f64, y: f64) -> Vector {
-        vector(x as f32, y as f32)
-    }
-    fn point2(x: f64, y: f64) -> Point {
-        point(x as f32, y as f32)
-    }
     match *token {
         PathSegment::MoveTo { abs: true, x, y } => {
-            builder.move_to(point2(x, y));
+            builder.move_to(point(T::value(x), T::value(y)));
         }
         PathSegment::MoveTo { abs: false, x, y } => {
-            builder.relative_move_to(vec2(x, y));
+            builder.relative_move_to(vector(T::value(x), T::value(y)));
         }
         PathSegment::LineTo { abs: true, x, y } => {
-            builder.line_to(point2(x, y));
+            builder.line_to(point(T::value(x), T::value(y)));
         }
         PathSegment::LineTo { abs: false, x, y } => {
-            builder.relative_line_to(vec2(x, y));
+            builder.relative_line_to(vector(T::value(x), T::value(y)));
         }
         PathSegment::HorizontalLineTo { abs: true, x } => {
-            builder.horizontal_line_to(x as f32);
+            builder.horizontal_line_to(T::value(x));
         }
         PathSegment::HorizontalLineTo { abs: false, x } => {
-            builder.relative_horizontal_line_to(x as f32);
+            builder.relative_horizontal_line_to(T::value(x));
         }
         PathSegment::VerticalLineTo { abs: true, y } => {
-            builder.vertical_line_to(y as f32);
+            builder.vertical_line_to(T::value(y));
         }
         PathSegment::VerticalLineTo { abs: false, y } => {
-            builder.relative_vertical_line_to(y as f32);
+            builder.relative_vertical_line_to(T::value(y));
         }
         PathSegment::CurveTo {
             abs: true,
@@ -87,7 +87,11 @@ where
             x,
             y,
         } => {
-            builder.cubic_bezier_to(point2(x1, y1), point2(x2, y2), point2(x, y));
+            builder.cubic_bezier_to(
+                point(T::value(x1), T::value(y1)),
+                point(T::value(x2), T::value(y2)),
+                point(T::value(x), T::value(y)),
+            );
         }
         PathSegment::CurveTo {
             abs: false,
@@ -98,7 +102,11 @@ where
             x,
             y,
         } => {
-            builder.relative_cubic_bezier_to(vec2(x1, y1), vec2(x2, y2), vec2(x, y));
+            builder.relative_cubic_bezier_to(
+                vector(T::value(x1), T::value(y1)),
+                vector(T::value(x2), T::value(y2)),
+                vector(T::value(x), T::value(y)),
+            );
         }
         PathSegment::SmoothCurveTo {
             abs: true,
@@ -107,7 +115,10 @@ where
             x,
             y,
         } => {
-            builder.smooth_cubic_bezier_to(point2(x2, y2), point2(x, y));
+            builder.smooth_cubic_bezier_to(
+                point(T::value(x2), T::value(y2)),
+                point(T::value(x), T::value(y)),
+            );
         }
         PathSegment::SmoothCurveTo {
             abs: false,
@@ -116,7 +127,10 @@ where
             x,
             y,
         } => {
-            builder.smooth_relative_cubic_bezier_to(vec2(x2, y2), vec2(x, y));
+            builder.smooth_relative_cubic_bezier_to(
+                vector(T::value(x2), T::value(y2)),
+                vector(T::value(x), T::value(y)),
+            );
         }
         PathSegment::Quadratic {
             abs: true,
@@ -125,7 +139,10 @@ where
             x,
             y,
         } => {
-            builder.quadratic_bezier_to(point2(x1, y1), point2(x, y));
+            builder.quadratic_bezier_to(
+                point(T::value(x1), T::value(y1)),
+                point(T::value(x), T::value(y)),
+            );
         }
         PathSegment::Quadratic {
             abs: false,
@@ -134,13 +151,16 @@ where
             x,
             y,
         } => {
-            builder.relative_quadratic_bezier_to(vec2(x1, y1), vec2(x, y));
+            builder.relative_quadratic_bezier_to(
+                vector(T::value(x1), T::value(y1)),
+                vector(T::value(x), T::value(y)),
+            );
         }
         PathSegment::SmoothQuadratic { abs: true, x, y } => {
-            builder.smooth_quadratic_bezier_to(point2(x, y));
+            builder.smooth_quadratic_bezier_to(point(T::value(x), T::value(y)));
         }
         PathSegment::SmoothQuadratic { abs: false, x, y } => {
-            builder.smooth_relative_quadratic_bezier_to(vec2(x, y));
+            builder.smooth_relative_quadratic_bezier_to(vector(T::value(x), T::value(y)));
         }
         PathSegment::EllipticalArc {
             abs: true,
@@ -153,13 +173,13 @@ where
             y,
         } => {
             builder.arc_to(
-                vec2(rx, ry),
-                Angle::degrees(x_axis_rotation as f32),
+                vector(T::value(rx), T::value(ry)),
+                Angle::degrees(T::value(x_axis_rotation)),
                 ArcFlags {
                     large_arc: large_arc,
                     sweep: sweep,
                 },
-                point2(x, y),
+                point(T::value(x), T::value(y)),
             );
         }
         PathSegment::EllipticalArc {
@@ -173,13 +193,13 @@ where
             y,
         } => {
             builder.relative_arc_to(
-                vec2(rx, ry),
-                Angle::degrees(x_axis_rotation as f32),
+                vector(T::value(rx), T::value(ry)),
+                Angle::degrees(T::value(x_axis_rotation)),
                 ArcFlags {
                     large_arc: large_arc,
                     sweep: sweep,
                 },
-                vec2(x, y),
+                vector(T::value(x), T::value(y)),
             );
         }
         PathSegment::ClosePath { .. } => {
@@ -193,20 +213,26 @@ where
 ///
 /// No effort is put into making the serializer fast or make the
 /// output compact. Intended primarily for debugging purposes.
-pub struct PathSerializer {
+pub struct PathSerializer<T: Scalar> {
     path: String,
-    current: Point,
+    current: Point<T>,
 }
 
-impl PathSerializer {
+impl<T: Scalar> PathSerializer<T> {
     pub fn new() -> Self {
         PathSerializer {
             path: String::new(),
-            current: point(0.0, 0.0),
+            current: point(T::ZERO, T::ZERO),
         }
     }
 
-    pub fn arc(&mut self, center: Point, radii: Vector, sweep_angle: Angle, x_rotation: Angle) {
+    pub fn arc(
+        &mut self,
+        center: Point<T>,
+        radii: Vector<T>,
+        sweep_angle: Angle<T>,
+        x_rotation: Angle<T>,
+    ) {
         let start_angle = (self.current - center).angle_from_x_axis() - x_rotation;
         let svg = Arc {
             center,
@@ -230,7 +256,7 @@ impl PathSerializer {
     }
 }
 
-impl Build for PathSerializer {
+impl<T: Scalar> Build for PathSerializer<T> {
     type PathType = String;
 
     fn build(self) -> String {
@@ -238,8 +264,8 @@ impl Build for PathSerializer {
     }
 }
 
-impl SvgPathBuilder for PathSerializer {
-    fn move_to(&mut self, to: Point) {
+impl<T: Scalar> SvgPathBuilder<T> for PathSerializer<T> {
+    fn move_to(&mut self, to: Point<T>) {
         self.path += &format!("M {} {} ", to.x, to.y);
         self.current = to;
     }
@@ -248,79 +274,79 @@ impl SvgPathBuilder for PathSerializer {
         self.path.push_str("Z");
     }
 
-    fn line_to(&mut self, to: Point) {
+    fn line_to(&mut self, to: Point<T>) {
         self.path += &format!("L {} {} ", to.x, to.y);
         self.current = to;
     }
 
-    fn quadratic_bezier_to(&mut self, ctrl: Point, to: Point) {
+    fn quadratic_bezier_to(&mut self, ctrl: Point<T>, to: Point<T>) {
         self.path += &format!("Q {} {} {} {}", ctrl.x, ctrl.y, to.x, to.y);
     }
 
-    fn cubic_bezier_to(&mut self, ctrl1: Point, ctrl2: Point, to: Point) {
+    fn cubic_bezier_to(&mut self, ctrl1: Point<T>, ctrl2: Point<T>, to: Point<T>) {
         self.path += &format!(
             "C {} {} {} {} {} {}",
             ctrl1.x, ctrl1.y, ctrl2.x, ctrl2.y, to.x, to.y
         );
     }
 
-    fn relative_move_to(&mut self, to: Vector) {
+    fn relative_move_to(&mut self, to: Vector<T>) {
         self.path += &format!("m {} {} ", to.x, to.y);
     }
 
-    fn relative_line_to(&mut self, to: Vector) {
+    fn relative_line_to(&mut self, to: Vector<T>) {
         self.path += &format!("l {} {} ", to.x, to.y);
     }
 
-    fn relative_quadratic_bezier_to(&mut self, ctrl: Vector, to: Vector) {
+    fn relative_quadratic_bezier_to(&mut self, ctrl: Vector<T>, to: Vector<T>) {
         self.path += &format!("q {} {} {} {}", ctrl.x, ctrl.y, to.x, to.y);
     }
 
-    fn relative_cubic_bezier_to(&mut self, ctrl1: Vector, ctrl2: Vector, to: Vector) {
+    fn relative_cubic_bezier_to(&mut self, ctrl1: Vector<T>, ctrl2: Vector<T>, to: Vector<T>) {
         self.path += &format!(
             "c {} {} {} {} {} {}",
             ctrl1.x, ctrl1.y, ctrl2.x, ctrl2.y, to.x, to.y
         );
     }
 
-    fn smooth_cubic_bezier_to(&mut self, ctrl2: Point, to: Point) {
+    fn smooth_cubic_bezier_to(&mut self, ctrl2: Point<T>, to: Point<T>) {
         self.path += &format!("S {} {} {} {}", ctrl2.x, ctrl2.y, to.x, to.y);
     }
 
-    fn smooth_relative_cubic_bezier_to(&mut self, ctrl2: Vector, to: Vector) {
+    fn smooth_relative_cubic_bezier_to(&mut self, ctrl2: Vector<T>, to: Vector<T>) {
         self.path += &format!("s {} {} {} {}", ctrl2.x, ctrl2.y, to.x, to.y);
     }
 
-    fn smooth_quadratic_bezier_to(&mut self, to: Point) {
+    fn smooth_quadratic_bezier_to(&mut self, to: Point<T>) {
         self.path += &format!("T {} {} ", to.x, to.y);
     }
 
-    fn smooth_relative_quadratic_bezier_to(&mut self, to: Vector) {
+    fn smooth_relative_quadratic_bezier_to(&mut self, to: Vector<T>) {
         self.path += &format!("t {} {} ", to.x, to.y);
     }
 
-    fn horizontal_line_to(&mut self, x: f32) {
+    fn horizontal_line_to(&mut self, x: T) {
         self.path += &format!("H {} ", x);
     }
 
-    fn relative_horizontal_line_to(&mut self, dx: f32) {
+    fn relative_horizontal_line_to(&mut self, dx: T) {
         self.path += &format!("h {} ", dx);
     }
 
-    fn vertical_line_to(&mut self, y: f32) {
+    fn vertical_line_to(&mut self, y: T) {
         self.path += &format!("V {} ", y);
     }
 
-    fn relative_vertical_line_to(&mut self, dy: f32) {
+    fn relative_vertical_line_to(&mut self, dy: T) {
         self.path += &format!("v {} ", dy);
     }
 
-    fn arc_to(&mut self, radii: Vector, x_rotation: Angle, flags: ArcFlags, to: Point) {
+    fn arc_to(&mut self, radii: Vector<T>, x_rotation: Angle<T>, flags: ArcFlags, to: Point<T>) {
         self.path += &format!(
             "A {} {} {} {} {} {} {} ",
             radii.x,
             radii.y,
-            x_rotation.get() * 180.0 / PI,
+            x_rotation.get() * T::value(180.0) / T::PI(),
             if flags.large_arc { 1u32 } else { 0 },
             if flags.sweep { 1u32 } else { 0 },
             to.x,
@@ -328,12 +354,18 @@ impl SvgPathBuilder for PathSerializer {
         );
     }
 
-    fn relative_arc_to(&mut self, radii: Vector, x_rotation: Angle, flags: ArcFlags, to: Vector) {
+    fn relative_arc_to(
+        &mut self,
+        radii: Vector<T>,
+        x_rotation: Angle<T>,
+        flags: ArcFlags,
+        to: Vector<T>,
+    ) {
         self.path += &format!(
             "a {} {} {} {} {} {} {} ",
             radii.x,
             radii.y,
-            x_rotation.get() * 180.0 / PI,
+            x_rotation.get() * T::value(180.0) / T::PI(),
             if flags.large_arc { 1u32 } else { 0 },
             if flags.sweep { 1u32 } else { 0 },
             to.x,

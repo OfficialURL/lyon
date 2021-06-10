@@ -1,12 +1,13 @@
 use path::builder::*;
+use path::geom::Scalar;
 use path::math::Point;
 use path::PathEvent;
 use path::{Path, PathSlice};
 use svg;
 
-pub type Polygons = Vec<Vec<Point>>;
+pub type Polygons<T> = Vec<Vec<Point<T>>>;
 
-pub fn path_to_polygons(path: PathSlice) -> Polygons {
+pub fn path_to_polygons<T: Scalar>(path: PathSlice<T>) -> Polygons<T> {
     let mut polygons = Vec::new();
     let mut poly = Vec::new();
     for evt in path {
@@ -37,8 +38,8 @@ pub fn path_to_polygons(path: PathSlice) -> Polygons {
     return polygons;
 }
 
-pub fn polygons_to_path(polygons: &Polygons) -> Path {
-    let mut builder = Path::builder().flattened(0.05);
+pub fn polygons_to_path<T: Scalar>(polygons: &Polygons<T>) -> Path<T> {
+    let mut builder = Path::builder().flattened(T::value(0.05));
     for poly in polygons.iter() {
         builder.begin(poly[0]);
         for i in 1..poly.len() {
@@ -49,10 +50,13 @@ pub fn polygons_to_path(polygons: &Polygons) -> Path {
     return builder.build();
 }
 
-pub fn find_reduced_test_case<F: Fn(Path) -> bool + panic::UnwindSafe + panic::RefUnwindSafe>(
-    path: PathSlice,
+pub fn find_reduced_test_case<
+    T: Scalar,
+    F: Fn(Path<T>) -> bool + panic::UnwindSafe + panic::RefUnwindSafe,
+>(
+    path: PathSlice<T>,
     cb: &F,
-) -> Path {
+) -> Path<T> {
     let mut polygons = path_to_polygons(path);
 
     println!(" -- removing sub-paths...");
@@ -111,9 +115,9 @@ pub fn find_reduced_test_case<F: Fn(Path) -> bool + panic::UnwindSafe + panic::R
 
 use std::panic;
 
-fn find_reduced_test_case_sp<F>(mut polygons: Polygons, cb: &F) -> Polygons
+fn find_reduced_test_case_sp<T: Scalar, F>(mut polygons: Polygons<T>, cb: &F) -> Polygons<T>
 where
-    F: Fn(Path) -> bool + panic::UnwindSafe + panic::RefUnwindSafe,
+    F: Fn(Path<T>) -> bool + panic::UnwindSafe + panic::RefUnwindSafe,
 {
     let mut i = 0;
     loop {

@@ -1,31 +1,32 @@
 //! Find the first collision between a ray and a path.
 
+use lyon_path::geom::Scalar;
+
 use crate::geom::{CubicBezierSegment, Line, LineSegment, QuadraticBezierSegment};
 use crate::math::{point, vector, Point, Vector};
 use crate::path::PathEvent;
-use std::f32;
 
-pub struct Ray {
-    pub origin: Point,
-    pub direction: Vector,
+pub struct Ray<T: Scalar> {
+    pub origin: Point<T>,
+    pub direction: Vector<T>,
 }
 
 // Position and normal at the point of contact between a ray and a shape.
-pub struct Hit {
-    pub position: Point,
-    pub normal: Vector,
+pub struct Hit<T: Scalar> {
+    pub position: Point<T>,
+    pub normal: Vector<T>,
 }
 
 // TODO: early out in the bézier/arc cases using bounding rect or circle
 // to speed things up.
 
 /// Find the closest collision between a ray and the path.
-pub fn raycast_path<Iter>(ray: &Ray, path: Iter, tolerance: f32) -> Option<Hit>
+pub fn raycast_path<T: Scalar, Iter>(ray: &Ray<T>, path: Iter, tolerance: T) -> Option<Hit<T>>
 where
-    Iter: Iterator<Item = PathEvent>,
+    Iter: Iterator<Item = PathEvent<T>>,
 {
     let ray_len = ray.direction.square_length();
-    if ray_len == 0.0 || ray_len.is_nan() {
+    if ray_len == T::ZERO || ray_len.is_nan() {
         return None;
     }
 
@@ -34,9 +35,9 @@ where
             point: ray.origin,
             vector: ray.direction,
         },
-        min_dot: f32::MAX,
-        result: point(0.0, 0.0),
-        normal: vector(0.0, 0.0),
+        min_dot: T::max_value(),
+        result: point(T::ZERO, T::ZERO),
+        normal: vector(T::ZERO, T::ZERO),
     };
 
     for evt in path {
@@ -82,11 +83,11 @@ where
         }
     }
 
-    if state.min_dot == f32::MAX {
+    if state.min_dot == T::max_value() {
         return None;
     }
 
-    if state.normal.dot(ray.direction) > 0.0 {
+    if state.normal.dot(ray.direction) > T::ZERO {
         state.normal = -state.normal;
     }
 
@@ -96,17 +97,17 @@ where
     })
 }
 
-struct RayCastInner {
-    ray: Line<f32>,
-    min_dot: f32,
-    result: Point,
-    normal: Vector,
+struct RayCastInner<T: Scalar> {
+    ray: Line<T>,
+    min_dot: T,
+    result: Point<T>,
+    normal: Vector<T>,
 }
 
-fn test_segment(state: &mut RayCastInner, segment: &LineSegment<f32>) {
+fn test_segment<T: Scalar>(state: &mut RayCastInner<T>, segment: &LineSegment<T>) {
     if let Some(pos) = segment.line_intersection(&state.ray) {
         let dot = (pos - state.ray.point).dot(state.ray.vector);
-        if dot >= 0.0 && dot < state.min_dot {
+        if dot >= T::ZERO && dot < state.min_dot {
             state.min_dot = dot;
             state.result = pos;
             let v = segment.to_vector();
